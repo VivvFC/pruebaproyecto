@@ -153,19 +153,19 @@ with tab1:
         st.markdown("**2. Impacto Real (Quejas por cada 10k Usuarios)**")
         st.caption("Divide las quejas entre el total de usuarios de cada empresa.")
         
-        if col_usuarios_real:
+        if usuarios_totales:
             # Cruzamos con perfil_df para obtener usuarios
             # Asumimos que el índice de perfil_df es el nombre del proveedor
             
             # Función auxiliar para buscar usuarios en perfil_df
-            def get_users(prov_name):
+            def get_users(proveedor_top):
                 try:
                     # Intenta buscar directo en el index
-                    if prov_name in perfil_df.index:
-                        return perfil_df.loc[prov_name, col_usuarios_real]
+                    if proveedor_top in perfil_df.index:
+                        return perfil_df.loc[proveedor_top, usuarios_totales]
                     # Si no, busca si hay columna de nombre
                     elif "proveedor" in perfil_df.columns:
-                        val = perfil_df.loc[perfil_df["proveedor"] == prov_name, col_usuarios_real]
+                        val = perfil_df.loc[perfil_df["proveedor"] == proveedor_top, usuarios_totales]
                         return val.iloc[0] if not val.empty else np.nan
                     return np.nan
                 except:
@@ -446,6 +446,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
