@@ -52,84 +52,32 @@ corr_df = load_corr()
 
 st.title("Análisis de Quejas en Telecomunicaciones (PROFECO 2022–2025)")
 
-geo_mapping = {
-    # Nombres comunes en tus datos  :  Nombre exacto en el GeoJSON
-    "AGUASCALIENTES": "Aguascalientes",
-    "BAJA CALIFORNIA": "Baja California",
-    "BAJA CALIFORNIA SUR": "Baja California Sur",
-    "CAMPECHE": "Campeche",
-    "COAHUILA": "Coahuila de Zaragoza",         # Ojo aquí
-    "COLIMA": "Colima",
-    "CHIAPAS": "Chiapas",
-    "CHIHUAHUA": "Chihuahua",
-    "CIUDAD DE MEXICO": "Distrito Federal",     # El GeoJSON usa el nombre antiguo
-    "CIUDAD DE MÉXICO": "Distrito Federal",
-    "CDMX": "Distrito Federal",
-    "DISTRITO FEDERAL": "Distrito Federal",
-    "DURANGO": "Durango",
-    "GUANAJUATO": "Guanajuato",
-    "GUERRERO": "Guerrero",
-    "HIDALGO": "Hidalgo",
-    "JALISCO": "Jalisco",
-    "MEXICO": "México",                         # Estado de México
-    "ESTADO DE MEXICO": "México",
-    "EDO. DE MEXICO": "México",
-    "MICHOACAN": "Michoacán de Ocampo",         # Ojo aquí
-    "MICHOACÁN": "Michoacán de Ocampo",
-    "MORELOS": "Morelos",
-    "NAYARIT": "Nayarit",
-    "NUEVO LEON": "Nuevo León",
-    "NUEVO LEÓN": "Nuevo León",
-    "OAXACA": "Oaxaca",
-    "PUEBLA": "Puebla",
-    "QUERETARO": "Querétaro",
-    "QUERÉTARO": "Querétaro",
-    "QUINTANA ROO": "Quintana Roo",
-    "SAN LUIS POTOSI": "San Luis Potosí",
-    "SAN LUIS POTOSÍ": "San Luis Potosí",
-    "SINALOA": "Sinaloa",
-    "SONORA": "Sonora",
-    "TABASCO": "Tabasco",
-    "TAMAULIPAS": "Tamaulipas",
-    "TLAXCALA": "Tlaxcala",
-    "VERACRUZ": "Veracruz de Ignacio de la Llave", # Ojo aquí
-    "YUCATAN": "Yucatán",
-    "YUCATÁN": "Yucatán",
-    "ZACATECAS": "Zacatecas"
-}
+def limpiar_clave(series):
+    if series is None: return None
+    # Mayúsculas, sin espacios y sin acentos para asegurar el merge interno
+    return series.astype(str).str.upper().str.strip().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
 
-# --- B. PREPARACIÓN DE COLUMNAS PARA EL MAPA ---
+# 1. Claves para DF Principal
+df["_key_estado"] = limpiar_clave(df["estado"])
+df["_key_prov"] = limpiar_clave(df["nombre_comercial"])
 
-def preparar_estado(texto):
-    if texto is None: return None
-    # 1. Limpiar básico: Mayúsculas y sin espacios extremos
-    t = str(texto).upper().strip()
-    # 2. Mapear: Si encuentra la llave usa el valor, si no, deja el texto original
-    return geo_mapping.get(t, geo_mapping.get(t.replace("Á","A").replace("É","E").replace("Í","I").replace("Ó","O").replace("Ú","U"), t))
-
-# Creamos columna temporal para el mapa en el DF Principal
-df["_estado_mapa"] = df["estado"].apply(preparar_estado)
-
-# Creamos columna temporal en DF Población
+# 2. Claves para DF Población
 col_estado_pob = [c for c in df_pob.columns if "estado" in c.lower() or "entidad" in c.lower()][0]
-df_pob["_estado_mapa"] = df_pob[col_estado_pob].apply(preparar_estado)
+df_pob["_key_estado"] = limpiar_clave(df_pob[col_estado_pob])
 
-# Detectamos columna de población (El año más reciente)
-cols_anios = [c for c in df_pob.columns if str(c).strip() in ['2025','2024','2023','2022']]
-cols_anios.sort(reverse=True) # Orden descendente
+# Detectar columna de población (Año más reciente)
+cols_anios = [c for c in df_pob.columns if str(c).strip() in ['2025','2024','2023','2022','2020']]
+cols_anios.sort(reverse=True)
 col_pob_target = cols_anios[0] if cols_anios else df_pob.select_dtypes('number').columns[-1]
-
 df_pob["_pob_uso"] = df_pob[col_pob_target]
 
-# --- C. PREPARACIÓN DE USUARIOS (PERFIL) ---
+# 3. Claves para Perfil (Usuarios)
 if "proveedor_top" not in perfil_df.columns:
     perfil_df = perfil_df.reset_index()
     if "proveedor_top" not in perfil_df.columns:
          perfil_df.rename(columns={perfil_df.columns[0]: "proveedor_top"}, inplace=True)
 
-# Normalizar nombre proveedor para cruces
-perfil_df["_prov_join"] = perfil_df["proveedor_top"].astype(str).str.upper().str.strip()
-df["_prov_join"] = df["nombre_comercial"].astype(str).str.upper().str.strip()
+perfil_df["_key_prov"] = limpiar_clave(perfil_df["proveedor_top"])
 
 # PESTAÑAS
 
@@ -197,12 +145,12 @@ with tab1:
     # =========================================================================
     # SECCIÓN 1: EVOLUCIÓN
     # =========================================================================
-    st.subheader("📈 Evolución Temporal")
+    st.subheader("📈 Tendencia Temporal")
     
     freq_alias = "M"
     
     df_evo = df_filtered.set_index("fecha_ingreso").groupby(
-        [pd.Grouper(freq=freq_alias), "nombre_comercial", "_prov_join"]
+        [pd.Grouper(freq=freq_alias), "nombre_comercial", "_key_prov"]
     ).size().reset_index(name="conteo")
 
     col_evo_1, col_evo_2 = st.columns(2)
@@ -211,7 +159,7 @@ with tab1:
         st.markdown("**1. Volumen Absoluto**")
         fig_abs = px.line(
             df_evo, x="fecha_ingreso", y="conteo", color="nombre_comercial", markers=True,
-            title="Histórico de Quejas",
+            title="Quejas Mensuales",
             labels={"conteo": "Quejas", "fecha_ingreso": "Fecha"}
         )
         fig_abs.update_layout(legend=dict(orientation="h", y=-0.2))
@@ -219,67 +167,72 @@ with tab1:
 
     with col_evo_2:
         st.markdown("**2. Tasa Real (x 10k Usuarios)**")
-        
         # Cruce con usuarios
         df_evo_rel = pd.merge(
             df_evo, 
-            perfil_df[["_prov_join", "usuarios_totales"]], 
-            on="_prov_join", 
+            perfil_df[["_key_prov", "usuarios_totales"]], 
+            on="_key_prov", 
             how="left"
         )
-        
-        # Si usuarios es nulo, ponemos 1 para no romper
         df_evo_rel["usuarios_totales"] = pd.to_numeric(df_evo_rel["usuarios_totales"], errors='coerce').fillna(1)
-        
         df_evo_rel["tasa"] = (df_evo_rel["conteo"] / df_evo_rel["usuarios_totales"]) * 10000
-        
-        # Filtro visual para quitar líneas rotas (donde no hubo cruce de usuarios)
         df_plot_rel = df_evo_rel[df_evo_rel["usuarios_totales"] > 100]
 
         if not df_plot_rel.empty:
             fig_rel = px.line(
                 df_plot_rel, x="fecha_ingreso", y="tasa", color="nombre_comercial", markers=True,
-                title="Impacto ponderado por usuarios",
-                labels={"tasa": "Quejas x 10k Usuarios", "fecha_ingreso": "Fecha"}
+                title="Impacto Ponderado por Usuarios",
+                labels={"tasa": "Tasa", "fecha_ingreso": "Fecha"}
             )
             fig_rel.update_layout(legend=dict(orientation="h", y=-0.2))
             st.plotly_chart(fig_rel, use_container_width=True)
         else:
-            st.warning("No se pudo calcular la tasa (verifica nombres de proveedores en ambos CSV).")
+            st.info("Falta información de usuarios para calcular la tasa.")
 
     # =========================================================================
-    # SECCIÓN 2: MAPA GEOGRÁFICO (CON DICCIONARIO CORREGIDO)
+    # SECCIÓN 2: RANKING GEOGRÁFICO (REEMPLAZO DEL MAPA)
     # =========================================================================
-    st.subheader("🗺️ Intensidad Geográfica")
+    st.subheader("📍 Ranking por Estado (Tasa por 100k hab)")
+    st.markdown("Estados con mayor incidencia de quejas ajustado por su población.")
     
     try:
-        # 1. Agrupar por la llave corregida (_estado_mapa)
-        quejas_edo = df_filtered["_estado_mapa"].value_counts().reset_index()
-        quejas_edo.columns = ["_estado_mapa", "quejas"]
+        # 1. Agrupar por la clave limpia
+        quejas_edo = df_filtered["_key_estado"].value_counts().reset_index()
+        quejas_edo.columns = ["_key_estado", "quejas"]
         
         # 2. Merge con Población
-        df_mapa = pd.merge(quejas_edo, df_pob, on="_estado_mapa", how="left")
+        df_ranking = pd.merge(quejas_edo, df_pob, on="_key_estado", how="left")
         
         # 3. Calcular Tasa
-        # Aseguramos que sea numérico
-        df_mapa["_pob_uso"] = pd.to_numeric(df_mapa["_pob_uso"], errors='coerce').fillna(1)
-        df_mapa["tasa_100k"] = (df_mapa["quejas"] / df_mapa["_pob_uso"]) * 100000
+        df_ranking["_pob_uso"] = pd.to_numeric(df_ranking["_pob_uso"], errors='coerce').fillna(1)
+        df_ranking["tasa_100k"] = (df_ranking["quejas"] / df_ranking["_pob_uso"]) * 100000
         
-        fig_map = px.choropleth(
-            df_mapa,
-            geojson="https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json",
-            locations="_estado_mapa",  # Esta columna ahora tiene "Distrito Federal", "Coahuila de Zaragoza", etc.
-            featureidkey="properties.name",
+        # 4. Recuperar el nombre original del estado (para que se vea bonito en la gráfica)
+        # Hacemos un merge inverso con el DF original para traer 'estado' original
+        # O simplemente tomamos el primer 'estado' que coincida con la key
+        lookup_names = df_filtered[["_key_estado", "estado"]].drop_duplicates().set_index("_key_estado")
+        df_ranking["nombre_estado"] = df_ranking["_key_estado"].map(lookup_names["estado"]).fillna(df_ranking["_key_estado"])
+        
+        # 5. Ordenar
+        df_ranking = df_ranking.sort_values("tasa_100k", ascending=True) # Ascendente para que el mayor salga arriba en barh
+        
+        # 6. Gráfico de Barras
+        fig_rank = px.bar(
+            df_ranking,
+            x="tasa_100k",
+            y="nombre_estado",
+            orientation='h',
+            text_auto=".1f",
             color="tasa_100k",
             color_continuous_scale="Reds",
-            title=f"Quejas por 100k hab (Población {col_pob_target})",
-            hover_data={"_estado_mapa":True, "quejas":True, "_pob_uso":True}
+            title=f"Incidencia de Quejas (Base: {col_pob_target})",
+            labels={"tasa_100k": "Quejas por 100k hab", "nombre_estado": ""}
         )
-        fig_map.update_geos(fitbounds="locations", visible=False)
-        st.plotly_chart(fig_map, use_container_width=True)
+        fig_rank.update_layout(height=600) # Un poco más alto para que quepan todos
+        st.plotly_chart(fig_rank, use_container_width=True)
         
     except Exception as e:
-        st.error(f"Error técnico en el mapa: {e}")
+        st.error(f"Error calculando el ranking: {e}")
 
     # =========================================================================
     # SECCIÓN 3: RESOLUCIÓN Y FOCOS ROJOS
@@ -296,65 +249,57 @@ with tab1:
         order_prov = df_filtered["nombre_comercial"].value_counts().index
         
         fig_stack = px.bar(
-            df_stack,
-            y="nombre_comercial",
-            x="porcentaje",
-            color="estado_procesal",
-            orientation='h',
-            text_auto=".0f",
-            category_orders={"nombre_comercial": order_prov}
+            df_stack, y="nombre_comercial", x="porcentaje", color="estado_procesal",
+            orientation='h', text_auto=".0f", category_orders={"nombre_comercial": order_prov}
         )
-        fig_stack.update_layout(barmode='stack', legend=dict(orientation="h", y=-0.3), xaxis_title="% Total", yaxis_title=None)
+        fig_stack.update_layout(barmode='stack', legend=dict(orientation="h", y=-0.2), yaxis_title=None)
         st.plotly_chart(fig_stack, use_container_width=True)
 
     with r2_c2:
-        st.subheader("🔥 Focos Rojos (Heatmap)")
+        st.subheader("🔥 Matriz de Calor")
         
-        # --- SOLUCIÓN PARA QUE NO SE VEA SOLO LA CDMX ---
-        exclude_cdmx = st.checkbox("Ocultar CDMX/EdoMex para ver mejor el resto", value=True)
+        # Opción para ocultar CDMX si sigue saliendo muy alta
+        exclude_cdmx = st.checkbox("Ocultar CDMX/EdoMex", value=False)
         
-        # Filtramos datos
-        df_heat_source = df_filtered.copy()
-        
+        df_heat_s = df_filtered.copy()
         if exclude_cdmx:
-            # Filtramos usando los nombres del mapa que sabemos que son CDMX
-            df_heat_source = df_heat_source[~df_heat_source["_estado_mapa"].isin(["Distrito Federal", "México"])]
+            # Filtro simple por texto
+            df_heat_s = df_heat_s[~df_heat_s["estado"].astype(str).str.contains("Ciudad|MExico|Distrito", case=False, regex=True)]
             
-        top_p = df_heat_source["nombre_comercial"].value_counts().head(10).index
-        top_e = df_heat_source["_estado_mapa"].value_counts().head(10).index
+        top_p = df_heat_s["nombre_comercial"].value_counts().head(10).index
+        top_e = df_heat_s["estado"].value_counts().head(10).index
         
-        df_heat = df_heat_source[
-            (df_heat_source["nombre_comercial"].isin(top_p)) &
-            (df_heat_source["_estado_mapa"].isin(top_e))
+        df_heat = df_heat_s[
+            (df_heat_s["nombre_comercial"].isin(top_p)) &
+            (df_heat_s["estado"].isin(top_e))
         ]
         
         if not df_heat.empty:
-            # Matriz de conteo
-            matriz = pd.crosstab(df_heat["nombre_comercial"], df_heat["_estado_mapa"])
+            matriz = pd.crosstab(df_heat["nombre_comercial"], df_heat["estado"])
             
-            # Normalización por población (Opcional, pero recomendada)
-            norm_type = st.radio("Métrica:", ["Conteo Directo", "Tasa x 100k hab"], horizontal=True)
+            # Normalización rápida por población del estado
+            # Necesitamos la población alineada con las columnas de la matriz
+            # Hacemos un lookup rápido
+            pob_lookup = df_pob.set_index("_key_estado")["_pob_uso"]
             
-            if norm_type == "Tasa x 100k hab":
-                # Dividir por población
-                pob_ref = df_pob.set_index("_estado_mapa")["_pob_uso"]
-                pob_subset = pob_ref.reindex(matriz.columns).fillna(1)
-                matriz_final = matriz.div(pob_subset, axis=1) * 100000
-                fmt = ".1f"
-            else:
-                matriz_final = matriz
-                fmt = "d"
+            # Creamos una fila de población que coincida con las columnas (estados) de la matriz
+            # Primero convertimos los nombres de las columnas a su clave limpia
+            cols_clean = [limpiar_clave(pd.Series([x]))[0] for x in matriz.columns]
+            vals_pob = pob_lookup.reindex(cols_clean).fillna(1).values
+            
+            # Dividimos
+            matriz_norm = matriz.div(vals_pob, axis=1) * 100000
             
             fig_heat = px.imshow(
-                matriz_final,
-                text_auto=fmt,
+                matriz_norm,
+                text_auto=".1f",
                 aspect="auto",
                 color_continuous_scale="Viridis",
-                labels=dict(x="Estado", y="Proveedor", color="Valor"),
+                labels=dict(x="Estado", y="Proveedor", color="Tasa"),
             )
             st.plotly_chart(fig_heat, use_container_width=True)
         else:
-            st.info("No hay datos para mostrar con los filtros actuales.")
+            st.info("Datos insuficientes.")
 
 # TAB 2 — BLOQUE 4: ANÁLISIS ECONÓMICO E INFERENCIAL
 
@@ -528,6 +473,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
