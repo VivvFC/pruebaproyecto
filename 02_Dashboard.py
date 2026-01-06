@@ -190,14 +190,14 @@ with tab1:
             st.info("Falta información de usuarios para calcular la tasa.")
 
         # =========================================================================
-    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (CHOROPLETH) — VERSIÓN CORREGIDA
+    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (CHOROPLETH) — FIX FINAL
     # =========================================================================
     st.subheader("📍 Intensidad de Quejas por Estado")
     st.markdown("Mapa de calor normalizado: Quejas por cada 100,000 habitantes.")
 
     try:
         # ---------------------------------------------------------
-        # 1. Conteo de quejas por estado (USANDO CLAVE LIMPIA)
+        # 1. Conteo de quejas por estado
         # ---------------------------------------------------------
         quejas_edo = (
             df_filtered["_key_estado"]
@@ -207,7 +207,7 @@ with tab1:
         quejas_edo.columns = ["_key_estado", "quejas"]
 
         # ---------------------------------------------------------
-        # 2. Merge con población (CLAVE LIMPIA)
+        # 2. Merge con población
         # ---------------------------------------------------------
         df_ranking = pd.merge(
             quejas_edo,
@@ -217,45 +217,51 @@ with tab1:
         )
 
         # ---------------------------------------------------------
-        # 3. Seleccionar columna de población
+        # 3. Población
         # ---------------------------------------------------------
         col_pob_num = df_pob.select_dtypes(include=[np.number]).columns[-1]
         df_ranking["poblacion_total"] = df_ranking[col_pob_num].fillna(1)
 
         # ---------------------------------------------------------
-        # 4. Calcular tasa por 100k habitantes
+        # 4. Tasa por 100k
         # ---------------------------------------------------------
         df_ranking["tasa_100k"] = (
             df_ranking["quejas"] / df_ranking["poblacion_total"]
         ) * 100000
 
         # ---------------------------------------------------------
-        # 5. Recuperar nombre "bonito" SOLO para hover
+        # 5. Nombre bonito (solo hover)
         # ---------------------------------------------------------
         col_nombre_mapa = df_pob.columns[0]
         nombre_lookup = dict(zip(df_pob["_key_estado"], df_pob[col_nombre_mapa]))
         df_ranking["nombre_mapa"] = df_ranking["_key_estado"].map(nombre_lookup)
 
         # ---------------------------------------------------------
-        # 6. Cargar y NORMALIZAR GeoJSON
+        # 6. Cargar GeoJSON (FIX BOM / HTML)
         # ---------------------------------------------------------
+        import json
         import requests
-        geojson_url = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json"
-        geojson = requests.get(geojson_url).json()
 
-        for feature in geojson["features"]:
-            feature["properties"]["key_estado"] = limpiar_clave(
-                pd.Series([feature["properties"]["name"]])
+        geojson_url = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json"
+        response = requests.get(geojson_url)
+
+        # 🔑 ESTA LÍNEA ES LA CLAVE
+        geojson = json.loads(response.content.decode("utf-8-sig"))
+
+        # Normalizar claves del GeoJSON
+        for f in geojson["features"]:
+            f["properties"]["key_estado"] = limpiar_clave(
+                pd.Series([f["properties"]["name"]])
             )[0]
 
         # ---------------------------------------------------------
-        # 7. Choropleth usando CLAVES NORMALIZADAS
+        # 7. Choropleth
         # ---------------------------------------------------------
         fig_map = px.choropleth(
             df_ranking,
             geojson=geojson,
-            locations="_key_estado",                 # 👈 CLAVE LIMPIA
-            featureidkey="properties.key_estado",    # 👈 CLAVE LIMPIA
+            locations="_key_estado",
+            featureidkey="properties.key_estado",
             color="tasa_100k",
             color_continuous_scale="Reds",
             range_color=(0, df_ranking["tasa_100k"].quantile(0.95)),
@@ -269,14 +275,7 @@ with tab1:
             title="Tasa de Quejas (x 100k hab)"
         )
 
-        # ---------------------------------------------------------
-        # 8. Ajustes estéticos
-        # ---------------------------------------------------------
-        fig_map.update_geos(
-            fitbounds="locations",
-            visible=False
-        )
-
+        fig_map.update_geos(fitbounds="locations", visible=False)
         fig_map.update_layout(
             margin={"r": 0, "t": 40, "l": 0, "b": 0},
             coloraxis_colorbar_title="Tasa"
@@ -286,9 +285,6 @@ with tab1:
 
     except Exception as e:
         st.error(f"No se pudo generar el mapa: {e}")
-        st.caption(
-            "Verifica que los nombres de los estados y el GeoJSON estén correctamente cargados."
-        )
 
     # =========================================================================
     # SECCIÓN 3: RESOLUCIÓN Y FOCOS ROJOS
@@ -529,6 +525,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
