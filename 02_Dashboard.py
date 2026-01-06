@@ -190,7 +190,7 @@ with tab1:
             st.info("Falta información de usuarios para calcular la tasa.")
 
         # =========================================================================
-    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (CHOROPLETH) — FIX FINAL
+    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (CHOROPLETH) — DEFINITIVA
     # =========================================================================
     st.subheader("📍 Intensidad de Quejas por Estado")
     st.markdown("Mapa de calor normalizado: Quejas por cada 100,000 habitantes.")
@@ -237,16 +237,16 @@ with tab1:
         df_ranking["nombre_mapa"] = df_ranking["_key_estado"].map(nombre_lookup)
 
         # ---------------------------------------------------------
-        # 6. Cargar GeoJSON (FIX BOM / HTML)
+        # 6. Cargar GeoJSON REAL (JSON PURO)
         # ---------------------------------------------------------
         import json
         import requests
 
-        geojson_url = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json"
-        response = requests.get(geojson_url)
-
-        # 🔑 ESTA LÍNEA ES LA CLAVE
-        geojson = json.loads(response.content.decode("utf-8-sig"))
+        geojson_url = (
+            "https://raw.githubusercontent.com/"
+            "ismyrnow/geojson-mexico/master/mexicoHigh.json"
+        )
+        geojson = json.loads(requests.get(geojson_url).text)
 
         # Normalizar claves del GeoJSON
         for f in geojson["features"]:
@@ -275,7 +275,11 @@ with tab1:
             title="Tasa de Quejas (x 100k hab)"
         )
 
-        fig_map.update_geos(fitbounds="locations", visible=False)
+        fig_map.update_geos(
+            fitbounds="locations",
+            visible=False
+        )
+
         fig_map.update_layout(
             margin={"r": 0, "t": 40, "l": 0, "b": 0},
             coloraxis_colorbar_title="Tasa"
@@ -285,7 +289,6 @@ with tab1:
 
     except Exception as e:
         st.error(f"No se pudo generar el mapa: {e}")
-
     # =========================================================================
     # SECCIÓN 3: RESOLUCIÓN Y FOCOS ROJOS
     # =========================================================================
@@ -525,6 +528,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
