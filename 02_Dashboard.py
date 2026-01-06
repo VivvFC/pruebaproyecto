@@ -91,18 +91,10 @@ tab1, tab2, tab3 = st.tabs([
 
 # TAB 1 — DASHBOARD ORIGINAL (BLOQUES 1, 2 y 3)
 
-# =============================================================================
-# PESTAÑA 1: ANÁLISIS DESCRIPTIVO (VERSIÓN CORREGIDA FINAL)
-# =============================================================================
-
-# =============================================================================
-# PESTAÑA 1: ANÁLISIS DESCRIPTIVO (VERSIÓN FINAL AJUSTADA)
-# =============================================================================
-
 with tab1:
-    st.markdown("### 🔍 Panorama General de Quejas")
+    st.markdown("### Panorama general de quejas")
     
-    # --- FILTROS ---
+    # Filtros
     with st.container():
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -116,7 +108,7 @@ with tab1:
             top_5 = df["nombre_comercial"].value_counts().head(5).index.tolist()
             sel_provs = st.multiselect("Proveedores", all_provs, default=top_5)
 
-    # --- APLICAR FILTROS ---
+    # Aplicar filtros
     if len(date_range) == 2:
         mask = (
             (df["fecha_ingreso"].dt.date >= date_range[0]) & 
@@ -128,7 +120,7 @@ with tab1:
     else:
         df_filtered = df.copy()
 
-    # --- KPIs ---
+    # KPIs
     total_q = len(df_filtered)
     try:
         if "conciliada" in df_filtered.columns:
@@ -146,10 +138,9 @@ with tab1:
     
     st.markdown("---")
 
-    # =========================================================================
-    # SECCIÓN 1: EVOLUCIÓN
-    # =========================================================================
-    st.subheader("📈 Tendencia Temporal")
+    # Bloque 1: Evolución
+    
+    st.subheader("Tendencia temporal")
     
     freq_alias = "M"
     
@@ -160,17 +151,17 @@ with tab1:
     col_evo_1, col_evo_2 = st.columns(2)
 
     with col_evo_1:
-        st.markdown("**1. Volumen Absoluto**")
+        st.markdown("**1. Volumen absoluto**")
         fig_abs = px.line(
             df_evo, x="fecha_ingreso", y="conteo", color="nombre_comercial", markers=True,
-            title="Quejas Mensuales",
+            title="Quejas mensuales",
             labels={"conteo": "Quejas", "fecha_ingreso": "Fecha"}
         )
         fig_abs.update_layout(legend=dict(orientation="h", y=-0.2))
         st.plotly_chart(fig_abs, use_container_width=True)
 
     with col_evo_2:
-        st.markdown("**2. Tasa Real (x 10k Usuarios)**")
+        st.markdown("**2. Tasa real (por 10k usuarios)**")
         # Cruce con usuarios
         df_evo_rel = pd.merge(
             df_evo, 
@@ -185,7 +176,7 @@ with tab1:
         if not df_plot_rel.empty:
             fig_rel = px.line(
                 df_plot_rel, x="fecha_ingreso", y="tasa", color="nombre_comercial", markers=True,
-                title="Impacto Ponderado por Usuarios",
+                title="Impacto ponderado por usuarios",
                 labels={"tasa": "Tasa", "fecha_ingreso": "Fecha"}
             )
             fig_rel.update_layout(legend=dict(orientation="h", y=-0.2))
@@ -193,26 +184,25 @@ with tab1:
         else:
             st.info("Falta información de usuarios para calcular la tasa.")
 
-    # =========================================================================
-    # SECCIÓN 2: RANKING GEOGRÁFICO (MODIFICADO)
-    # =========================================================================
+    # Bloque 2: Ranking geográfico
+    
     st.markdown("---")
     c_rank_head, c_rank_opt = st.columns([2, 1])
     with c_rank_head:
-        st.subheader("📍 Ranking por Estado")
+        st.subheader("Ranking por estado")
     with c_rank_opt:
         # Checkbox para quitar CDMX
-        ocultar_cdmx_rank = st.checkbox("Ocultar CDMX/EdoMex (Zoom)", value=False, key="rank_exclude")
+        ocultar_cdmx_rank = st.checkbox("Ocultar CDMX", value=False, key="rank_exclude")
 
     try:
         # 1. Agrupar
         quejas_edo = df_filtered["_key_estado"].value_counts().reset_index()
         quejas_edo.columns = ["_key_estado", "quejas"]
         
-        # 2. Merge con Población
+        # 2. Merge con población
         df_ranking = pd.merge(quejas_edo, df_pob, on="_key_estado", how="left")
         
-        # 3. Calcular Tasa
+        # 3. Calcular tasa
         df_ranking["_pob_uso"] = pd.to_numeric(df_ranking["_pob_uso"], errors='coerce').fillna(1)
         df_ranking["tasa_100k"] = (df_ranking["quejas"] / df_ranking["_pob_uso"]) * 100000
         
@@ -220,12 +210,12 @@ with tab1:
         lookup_names = df_filtered[["_key_estado", "estado"]].drop_duplicates().set_index("_key_estado")
         df_ranking["nombre_estado"] = df_ranking["_key_estado"].map(lookup_names["estado"]).fillna(df_ranking["_key_estado"])
         
-        # 5. FILTRO OPCIONAL DE CDMX (Aquí está la lógica nueva)
+        # 5. Filtro para ocultar la cdmx
         if ocultar_cdmx_rank:
             # Filtramos cualquier cosa que parezca CDMX, DF o Mexico (Estado)
-            df_ranking = df_ranking[~df_ranking["_key_estado"].str.contains("CIUDAD|DISTRITO|MEXICO", regex=True)]
+            df_ranking = df_ranking[~df_ranking["_key_estado"].str.contains("CIUDAD", regex=True)]
 
-        # 6. Ordenar y Graficar
+        # 6. Ordenar y graficar
         df_ranking = df_ranking.sort_values("tasa_100k", ascending=True) 
         
         # Ajustamos altura dinámica según la cantidad de estados
@@ -248,14 +238,13 @@ with tab1:
     except Exception as e:
         st.error(f"Error calculando el ranking: {e}")
 
-    # =========================================================================
-    # SECCIÓN 3: RESOLUCIÓN Y MATRIZ DE CALOR (MODIFICADO)
-    # =========================================================================
+    # Bloque 3: Resolución y matriz de calor
+
     st.markdown("---")
     r2_c1, r2_c2 = st.columns(2)
 
     with r2_c1:
-        st.subheader("📊 Resolución (%)")
+        st.subheader("Resolución (%)")
         
         df_stack = df_filtered.groupby(["nombre_comercial", "estado_procesal"]).size().reset_index(name="conteo")
         totals = df_stack.groupby("nombre_comercial")["conteo"].transform("sum")
@@ -271,20 +260,20 @@ with tab1:
         st.plotly_chart(fig_stack, use_container_width=True)
 
     with r2_c2:
-        st.subheader("🔥 Matriz de Calor")
+        st.subheader("Mapa de calor de quejas por estado y proveedor")
         
         # Controles del Heatmap
         col_h1, col_h2 = st.columns(2)
         with col_h1:
-            exclude_cdmx_heat = st.checkbox("Ocultar CDMX/EdoMex", value=False, key="heat_exclude")
+            exclude_cdmx_heat = st.checkbox("Ocultar CDMX", value=False, key="heat_exclude")
         with col_h2:
             # Opción para normalizar o no
-            modo_heatmap = st.radio("Métrica", ["Conteo Total", "Tasa x 100k"], horizontal=True)
+            modo_heatmap = st.radio("Métrica", ["Conteo total", "Tasa x 100k"], horizontal=True)
         
         # Filtro de datos
         df_heat_s = df_filtered.copy()
         if exclude_cdmx_heat:
-            df_heat_s = df_heat_s[~df_heat_s["_key_estado"].str.contains("CIUDAD|MEXICO|DISTRITO", regex=True)]
+            df_heat_s = df_heat_s[~df_heat_s["_key_estado"].str.contains("CIUDAD", regex=True)]
             
         top_p = df_heat_s["nombre_comercial"].value_counts().head(10).index
         top_e = df_heat_s["estado"].value_counts().head(10).index
@@ -494,4 +483,5 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
