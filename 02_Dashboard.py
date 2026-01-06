@@ -112,7 +112,7 @@ with tab1:
         conciliadas = df_filtered["conciliada"].sum()
     else:
         # Busca "Conciliada" o "Favor" en el estatus
-        conciliadas = df_filtered["estatus_queja"].astype(str).str.contains("Conciliada|Favor", case=False).sum()
+        conciliadas = df_filtered["estado_procesal"].astype(str).str.contains("Conciliada|Favor", case=False).sum()
         
     pct_concil = (conciliadas / total_q * 100) if total_q > 0 else 0
     
@@ -233,13 +233,13 @@ with tab1:
         
         # Gráfica de Barras Apiladas al 100%
         # Esto reemplaza al Treemap confuso. Muestra claramente el % de conciliación.
-        df_stack = df_filtered.groupby(["nombre_comercial", "estatus_queja"]).size().reset_index(name="conteo")
+        df_stack = df_filtered.groupby(["nombre_comercial", "estado_procesal"]).size().reset_index(name="conteo")
         
         fig_stack = px.bar(
             df_stack,
             x="nombre_comercial",
             y="conteo",
-            color="estatus_queja", # Colores por estatus (Conciliada, Trámite, etc.)
+            color="estado_procesal", # Colores por estatus (Conciliada, Trámite, etc.)
             title="Distribución de Estatus por Proveedor",
             barmode="stack",
             barnorm="percent", # Normaliza al 100%
@@ -446,6 +446,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
