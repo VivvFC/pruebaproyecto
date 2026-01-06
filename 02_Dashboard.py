@@ -212,7 +212,6 @@ with tab1:
         
         # 5. Filtro para ocultar la cdmx
         if ocultar_cdmx_rank:
-            # Filtramos cualquier cosa que parezca CDMX, DF o Mexico (Estado)
             df_ranking = df_ranking[~df_ranking["_key_estado"].str.contains("CIUDAD", regex=True)]
 
         # 6. Ordenar y graficar
@@ -483,5 +482,6 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
