@@ -65,175 +65,175 @@ tab1, tab2, tab3 = st.tabs([
 
 # TAB 1 — DASHBOARD ORIGINAL (BLOQUES 1, 2 y 3)
 
-#  BLOQUE 1 
+# =============================================================================
+# PESTAÑA 1: ANÁLISIS DESCRIPTIVO
+# =============================================================================
 with tab1:
+    st.markdown("### 📊 Panorama General de Reclamaciones")
+    st.markdown("Visión estratégica del volumen, montos y tiempos de resolución de las quejas ante PROFECO.")
+    st.markdown("---")
 
+    # -------------------------------------------------------------------------
+    # 1. SECCIÓN DE KPIs (INDICADORES CLAVE)
+    # -------------------------------------------------------------------------
+    # Calculamos métricas rápidas sobre los datos filtrados
+    total_quejas = len(df_filtered)
+    monto_total = df_filtered['monto_reclamado'].sum()
+    
+    # Conciliación: Porcentaje de casos que terminaron en "Conciliada"
+    conciliados = df_filtered[df_filtered['estado_procesal'] == 'Conciliada'].shape[0]
+    tasa_conciliacion = (conciliados / total_quejas * 100) if total_quejas > 0 else 0
+    
+    # Tiempo promedio (si calculaste la columna 'dias_resolucion' en el tratamiento)
+    if 'dias_resolucion' in df_filtered.columns:
+        tiempo_promedio = df_filtered['dias_resolucion'].mean()
+    else:
+        tiempo_promedio = 0
 
-    st.header("Bloque 1: Comparación de compañías")
+    # Desplegamos 4 métricas en columnas
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    
+    kpi1.metric(
+        label="📂 Total Expedientes", 
+        value=f"{total_quejas:,.0f}",
+        help="Número total de quejas en el periodo seleccionado."
+    )
+    
+    kpi2.metric(
+        label="💰 Monto Reclamado", 
+        value=f"${monto_total/1000000:.1f}M", 
+        delta="MXN",
+        help="Suma total de los montos reclamados (Millones de Pesos)."
+    )
+    
+    kpi3.metric(
+        label="🤝 Tasa de Conciliación", 
+        value=f"{tasa_conciliacion:.1f}%",
+        help="Porcentaje de expedientes que lograron conciliarse."
+    )
+    
+    kpi4.metric(
+        label="⏱️ Tiempo Prom. Resolución", 
+        value=f"{tiempo_promedio:.0f} días",
+        help="Días promedio entre fecha de ingreso y cierre."
+    )
+    
+    st.markdown("---")
 
-    f1, f2, f3, f4 = st.columns(4)
+    # -------------------------------------------------------------------------
+    # 2. FILA 1: TENDENCIAS Y VOLUMEN (GRÁFICAS PRINCIPALES)
+    # -------------------------------------------------------------------------
+    col_main_1, col_main_2 = st.columns([2, 1])  # Columna izquierda más ancha
 
-    with f1:
-        anios_b1 = st.multiselect(
-            "Año",
-            sorted(df["anio"].dropna().unique()),
-            default=sorted(df["anio"].dropna().unique())
+    with col_main_1:
+        st.subheader("📈 Evolución Temporal de Quejas")
+        # Agrupamos por mes para ver la tendencia limpia
+        # Aseguramos que fecha_ingreso sea datetime
+        df_trend = df_filtered.set_index('fecha_ingreso').resample('M').size().reset_index(name='Quejas')
+        
+        fig_trend = px.line(
+            df_trend, 
+            x='fecha_ingreso', 
+            y='Quejas', 
+            markers=True,
+            title="Tendencia Mensual de Expedientes Ingresados",
+            color_discrete_sequence=['#2E86C1'] # Azul corporativo
         )
+        fig_trend.update_layout(xaxis_title="Fecha", yaxis_title="Número de Quejas", hovermode="x unified")
+        st.plotly_chart(fig_trend, use_container_width=True)
 
-    with f2:
-        estados_b1 = st.multiselect(
-            "Estado",
-            sorted(df["estado"].dropna().unique()),
-            default=sorted(df["estado"].dropna().unique())
+    with col_main_2:
+        st.subheader("🏆 Top 10 Proveedores")
+        # Contamos y ordenamos
+        top_prov = df_filtered['proveedor_top'].value_counts().head(10).reset_index()
+        top_prov.columns = ['Proveedor', 'Quejas']
+        
+        fig_bar = px.bar(
+            top_prov, 
+            x='Quejas', 
+            y='Proveedor', 
+            orientation='h',
+            text='Quejas',
+            color='Quejas',
+            color_continuous_scale='Blues',
+            title="Proveedores con más Reclamaciones"
         )
+        fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, showlegend=False)
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-    with f3:
-        proveedores_b1 = st.multiselect(
-            "Proveedor",
-            sorted(df["proveedor_top"].dropna().unique()),
-            default=sorted(df["proveedor_top"].dropna().unique())
+    # -------------------------------------------------------------------------
+    # 3. FILA 2: ANÁLISIS DE CAUSAS Y MONTOS (SUNBURST Y BOXPLOT)
+    # -------------------------------------------------------------------------
+    st.markdown("#### 🔍 Profundización en Causas y Costos")
+    col_deep_1, col_deep_2 = st.columns(2)
+
+    with col_deep_1:
+        st.markdown("**Distribución Jerárquica: ¿De qué se quejan?**")
+        # Gráfico Sunburst: Categoría -> Motivo
+        # Usamos head(15) en motivos para no saturar visualmente
+        fig_sun = px.sunburst(
+            df_filtered, 
+            path=['categoria_problema', 'motivo_reclamacion'], 
+            values='costo_bien_servicio', # Tamaño por costo del servicio (o usa 'count' si prefieres frecuencia)
+            color='categoria_problema',
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+            title="Jerarquía de Problemas (Click para explorar)"
         )
+        fig_sun.update_layout(margin=dict(t=30, l=0, r=0, b=0))
+        st.plotly_chart(fig_sun, use_container_width=True)
 
-    with f4:
-        top_n = st.slider("Top N proveedores", 1, 10, 7)
-
-    df_b1 = df.copy()
-
-    if anios_b1:
-        df_b1 = df_b1[df_b1["anio"].isin(anios_b1)]
-    if estados_b1:
-        df_b1 = df_b1[df_b1["estado"].isin(estados_b1)]
-    if proveedores_b1:
-        df_b1 = df_b1[df_b1["proveedor_top"].isin(proveedores_b1)]
-
-    k1, k2, k3 = st.columns(3)
-    k1.metric("Total de quejas", f"{len(df_b1):,}")
-    k2.metric("Tasa de conciliación", f"{df_b1['resuelta'].mean()*100:.1f}%")
-    k3.metric("Mediana días de resolución", f"{df_b1['dias_resolucion'].median():.0f}")
-
-    top_prov = df_b1["proveedor_top"].value_counts().head(top_n).index
-
-    df_line = (
-        df_b1[df_b1["proveedor_top"].isin(top_prov)]
-        .groupby([df_b1["fecha_ingreso"].dt.to_period("M"), "proveedor_top"])
-        .size()
-        .reset_index(name="quejas")
-    )
-    df_line["fecha_ingreso"] = df_line["fecha_ingreso"].astype(str)
-
-    st.plotly_chart(
-        px.line(df_line, x="fecha_ingreso", y="quejas", color="proveedor_top",
-                title="Evolución mensual de quejas"),
-        use_container_width=True
-    )
-
-    df_bar = (
-        df_b1.groupby("proveedor_top")
-        .agg(total_quejas=("resuelta", "count"),
-             conciliadas=("resuelta", "sum"))
-        .reset_index()
-    )
-
-    df_bar = df_bar.melt(
-        id_vars="proveedor_top",
-        value_vars=["total_quejas", "conciliadas"],
-        var_name="tipo",
-        value_name="cantidad"
-    )
-
-    st.plotly_chart(
-        px.bar(df_bar, x="proveedor_top", y="cantidad",
-               color="tipo", barmode="group",
-               title="Quejas totales vs conciliadas"),
-        use_container_width=True
-    )
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.plotly_chart(
-            px.pie(df_b1, names="tipo_servicio",
-                   title="Inconformidades por tipo de servicio"),
-            use_container_width=True
+    with col_deep_2:
+        st.markdown("**Dispersión de Montos Reclamados**")
+        # Checkbox para interactividad en escala
+        log_scale = st.checkbox("Usar Escala Logarítmica (Recomendado para ver Outliers)", value=True, key="log_tab1")
+        
+        # Filtramos ceros para evitar errores en log
+        df_money = df_filtered[df_filtered['monto_reclamado'] > 0]
+        
+        fig_box = px.box(
+            df_money, 
+            x='proveedor_top', 
+            y='monto_reclamado',
+            color='proveedor_top',
+            log_y=log_scale,
+            title=f"Distribución de Montos por Proveedor ({'Log' if log_scale else 'Lineal'})",
+            points="outliers" # Solo mostramos outliers como puntos
         )
+        fig_box.update_layout(showlegend=False, yaxis_title="Monto ($MXN)")
+        st.plotly_chart(fig_box, use_container_width=True)
 
-    with c2:
-        st.plotly_chart(
-            px.pie(df_b1, names="estado_procesal",
-                   title="Estatus de inconformidades"),
-            use_container_width=True
+    # -------------------------------------------------------------------------
+    # 4. FILA 3: MAPA DE CALOR (CORRELACIÓN) - ¡EL FACTOR WOW!
+    # -------------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("🔥 Mapa de Calor: ¿Dónde le duele a cada empresa?")
+    st.markdown("Identifica patrones visuales: ¿Qué categoría afecta más a cada proveedor?")
+
+    # Creamos la matriz cruzada
+    heatmap_data = pd.crosstab(df_filtered['proveedor_top'], df_filtered['categoria_problema'])
+    
+    fig_heat = px.imshow(
+        heatmap_data,
+        text_auto=True, # Muestra los números en las celdas
+        aspect="auto",
+        color_continuous_scale="Reds",
+        labels=dict(x="Categoría del Problema", y="Proveedor", color="No. Quejas"),
+        title="Intensidad de Quejas por Categoría y Proveedor"
+    )
+    fig_heat.update_xaxes(side="top") # Pone las etiquetas arriba para leer mejor
+    st.plotly_chart(fig_heat, use_container_width=True)
+
+    # -------------------------------------------------------------------------
+    # 5. EXPANDER CON DATOS RAW (PARA TRANSPARENCIA)
+    # -------------------------------------------------------------------------
+    with st.expander("📂 Ver Detalle de los Datos Filtrados"):
+        st.dataframe(
+            df_filtered[['fecha_ingreso', 'proveedor', 'motivo_reclamacion', 
+                         'monto_reclamado', 'costo_bien_servicio', 'estado_procesal']]
+            .sort_values(by='fecha_ingreso', ascending=False)
+            .head(1000) # Limitamos a 1000 para rendimiento
         )
-
-    df_time = (
-        df_b1.groupby("proveedor_top")["dias_resolucion"]
-        .median()
-        .reset_index()
-    )
-
-    st.plotly_chart(
-        px.bar(df_time, x="proveedor_top", y="dias_resolucion",
-               title="Mediana de días de resolución por compañía"),
-        use_container_width=True
-    )
-
-    #  BLOQUE 2 
-    st.header("Bloque 2: Comparación entre estados")
-
-    anio_sel = st.selectbox("Selecciona año", sorted(df["anio"].unique()))
-    prov_b2 = st.multiselect(
-        "Proveedor",
-        sorted(df["proveedor_top"].unique()),
-        default=sorted(df["proveedor_top"].unique()),
-         key="prov_b2"
-    )
-
-    df_b2 = df[(df["anio"] == anio_sel) & (df["proveedor_top"].isin(prov_b2))]
-
-    tabla_estados = df_b2.groupby("estado").size().reset_index(name="quejas")
-    tabla_estados = tabla_estados.merge(
-        df_pob[["estado", str(anio_sel)]], on="estado", how="left"
-    )
-    tabla_estados["quejas_100k"] = (
-        tabla_estados["quejas"] / tabla_estados[str(anio_sel)] * 100000
-    )
-
-    st.dataframe(tabla_estados.sort_values("quejas_100k", ascending=False))
-
-    #  BLOQUE 3 
-    st.header("Bloque 3: Motivos de reclamación")
-
-    prov_b3 = st.multiselect(
-        "Proveedor",
-        sorted(df["proveedor_top"].unique()),
-        default=sorted(df["proveedor_top"].unique()),
-        key="prov_b3"
-    )
-
-    problema_sel = st.selectbox(
-        "Problema clasificado",
-        sorted(df["problema_clasificado"].unique())
-    )
-
-    top_n_motivos = st.slider("Número de motivos a mostrar", 5, 20, 10)
-
-    df_b3 = df[
-        (df["proveedor_top"].isin(prov_b3)) &
-        (df["problema_clasificado"] == problema_sel)
-    ]
-
-    tabla_motivos = (
-        df_b3.groupby("motivo_reclamacion")
-        .agg(
-            frecuencia=("resuelta", "count"),
-            tasa_conciliacion=("resuelta", "mean")
-        )
-        .reset_index()
-        .sort_values("frecuencia", ascending=False)
-        .head(top_n_motivos)
-    )
-
-    tabla_motivos["tasa_conciliacion"] *= 100
-    st.dataframe(tabla_motivos)
+        st.caption("Mostrando los últimos 1000 registros filtrados.")
 
 # TAB 2 — BLOQUE 4: ANÁLISIS ECONÓMICO E INFERENCIAL
 
@@ -407,6 +407,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
