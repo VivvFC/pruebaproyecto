@@ -65,175 +65,142 @@ tab1, tab2, tab3 = st.tabs([
 
 # TAB 1 — DASHBOARD ORIGINAL (BLOQUES 1, 2 y 3)
 
-# =============================================================================
-# PESTAÑA 1: ANÁLISIS DESCRIPTIVO
-# =============================================================================
-with tab1:
-    st.markdown("### 📊 Panorama General de Reclamaciones")
-    st.markdown("Visión estratégica del volumen, montos y tiempos de resolución de las quejas ante PROFECO.")
-    st.markdown("---")
+# ... (El código anterior de carga de datos y sidebar se mantiene igual)
 
-    # -------------------------------------------------------------------------
-    # 1. SECCIÓN DE KPIs (INDICADORES CLAVE)
-    # -------------------------------------------------------------------------
-    # Calculamos métricas rápidas sobre los datos filtrados
-    total_quejas = len(df_filtered)
-    monto_total = df_filtered['monto_reclamado'].sum()
+    # =============================================================================
+    # PESTAÑA 1: ANÁLISIS DESCRIPTIVO
+    # =============================================================================
     
-    # Conciliación: Porcentaje de casos que terminaron en "Conciliada"
-    conciliados = df_filtered[df_filtered['estado_procesal'] == 'Conciliada'].shape[0]
-    tasa_conciliacion = (conciliados / total_quejas * 100) if total_quejas > 0 else 0
-    
-    # Tiempo promedio (si calculaste la columna 'dias_resolucion' en el tratamiento)
-    if 'dias_resolucion' in df_filtered.columns:
-        tiempo_promedio = df_filtered['dias_resolucion'].mean()
-    else:
-        tiempo_promedio = 0
-
-    # Desplegamos 4 métricas en columnas
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    
-    kpi1.metric(
-        label="📂 Total Expedientes", 
-        value=f"{total_quejas:,.0f}",
-        help="Número total de quejas en el periodo seleccionado."
-    )
-    
-    kpi2.metric(
-        label="💰 Monto Reclamado", 
-        value=f"${monto_total/1000000:.1f}M", 
-        delta="MXN",
-        help="Suma total de los montos reclamados (Millones de Pesos)."
-    )
-    
-    kpi3.metric(
-        label="🤝 Tasa de Conciliación", 
-        value=f"{tasa_conciliacion:.1f}%",
-        help="Porcentaje de expedientes que lograron conciliarse."
-    )
-    
-    kpi4.metric(
-        label="⏱️ Tiempo Prom. Resolución", 
-        value=f"{tiempo_promedio:.0f} días",
-        help="Días promedio entre fecha de ingreso y cierre."
-    )
-    
-    st.markdown("---")
-
-    # -------------------------------------------------------------------------
-    # 2. FILA 1: TENDENCIAS Y VOLUMEN (GRÁFICAS PRINCIPALES)
-    # -------------------------------------------------------------------------
-    col_main_1, col_main_2 = st.columns([2, 1])  # Columna izquierda más ancha
-
-    with col_main_1:
-        st.subheader("📈 Evolución Temporal de Quejas")
-        # Agrupamos por mes para ver la tendencia limpia
-        # Aseguramos que fecha_ingreso sea datetime
-        df_trend = df_filtered.set_index('fecha_ingreso').resample('M').size().reset_index(name='Quejas')
+    with tab1:
+        st.markdown("### 🔍 Panorama General de Quejas")
         
-        fig_trend = px.line(
-            df_trend, 
-            x='fecha_ingreso', 
-            y='Quejas', 
+        # --- FILTROS ESPECÍFICOS DE LA PESTAÑA ---
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            date_range = st.date_input(
+                "Selecciona rango de fechas",
+                [df_main["fecha_ingreso"].min(), df_main["fecha_ingreso"].max()]
+            )
+        with col_f2:
+            # Filtro opcional de estados para no saturar si no se desea
+            all_states = sorted(df_main["estado"].unique())
+            selected_states = st.multiselect("Filtrar por Estados (Opcional)", all_states, default=all_states)
+
+        # Aplicar filtros
+        mask = (
+            (df_main["fecha_ingreso"].dt.date >= date_range[0]) &
+            (df_main["fecha_ingreso"].dt.date <= date_range[1])
+        )
+        if selected_states:
+            mask = mask & (df_main["estado"].isin(selected_states))
+            
+        df_filtered = df_main[mask].copy()
+
+        # --- KPIs ---
+        total_quejas = len(df_filtered)
+        proveedores_unicos = df_filtered["proveedor"].nunique()
+        # Calculamos % de conciliación (asumiendo que existe un estatus 'Conciliada' o similar, ajusta el string según tus datos)
+        # Si no tienes una columna exacta para esto, puedes quitar esta métrica o ajustarla
+        conciliadas = df_filtered[df_filtered["estatus"].str.contains("Conciliada", case=False, na=False)].shape[0]
+        pct_conciliacion = (conciliadas / total_quejas * 100) if total_quejas > 0 else 0
+
+        kpi1, kpi2, kpi3 = st.columns(3)
+        kpi1.metric("Total de Quejas", f"{total_quejas:,}")
+        kpi2.metric("Proveedores Involucrados", f"{proveedores_unicos}")
+        kpi3.metric("% Conciliación Aprox.", f"{pct_conciliacion:.1f}%")
+
+        st.markdown("---")
+
+        # --- BLOQUE 1: EVOLUCIÓN (La que te gusta) ---
+        # Agrupamos por mes para ver la tendencia
+        df_evo = df_filtered.set_index("fecha_ingreso").resample("M").size().reset_index(name="conteo")
+        
+        fig_evo = px.line(
+            df_evo, 
+            x="fecha_ingreso", 
+            y="conteo", 
             markers=True,
-            title="Tendencia Mensual de Expedientes Ingresados",
-            color_discrete_sequence=['#2E86C1'] # Azul corporativo
+            title="📈 Evolución Mensual de Quejas",
+            labels={"fecha_ingreso": "Fecha", "conteo": "Número de Quejas"}
         )
-        fig_trend.update_layout(xaxis_title="Fecha", yaxis_title="Número de Quejas", hovermode="x unified")
-        st.plotly_chart(fig_trend, use_container_width=True)
+        fig_evo.update_layout(xaxis_title=None)
+        st.plotly_chart(fig_evo, use_container_width=True)
 
-    with col_main_2:
-        st.subheader("🏆 Top 10 Proveedores")
-        # Contamos y ordenamos
-        top_prov = df_filtered['proveedor_top'].value_counts().head(10).reset_index()
-        top_prov.columns = ['Proveedor', 'Quejas']
+        # --- BLOQUE 2: MAPA NORMALIZADO Y TREEMAP ---
+        row2_col1, row2_col2 = st.columns([1, 1])
+
+        with row2_col1:
+            st.subheader("Geografía del Reclamo")
+            # Preparación de datos para el mapa: Cruce con Población
+            quejas_edo = df_filtered["estado"].value_counts().reset_index()
+            quejas_edo.columns = ["estado", "quejas"]
+            
+            # Asegúrate que los nombres de estados coincidan entre df_main y df_poblacion
+            # Hacemos un merge left
+            df_mapa = pd.merge(quejas_edo, df_pob, left_on="estado", right_on="estado", how="left")
+            
+            # Cálculo de Tasa por 100k habitantes (Más valioso que el conteo simple)
+            # Si hay algún estado que no cruzó (NaN), rellenamos con 0 para evitar error
+            df_mapa["poblacion"] = df_mapa["poblacion"].fillna(1) 
+            df_mapa["tasa_100k"] = (df_mapa["quejas"] / df_mapa["poblacion"]) * 100000
+
+            fig_map = px.choropleth(
+                df_mapa,
+                geojson="https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json", # GeoJSON público de México
+                locations="estado",
+                featureidkey="properties.name",
+                color="tasa_100k",
+                color_continuous_scale="Reds",
+                title="Quejas por cada 100k Habitantes (Intensidad Real)",
+                hover_data=["quejas", "poblacion"]
+            )
+            fig_map.update_geos(fitbounds="locations", visible=False)
+            st.plotly_chart(fig_map, use_container_width=True)
+            st.caption("*El mapa muestra la densidad de quejas relativa a la población, revelando dónde el problema es más agudo proporcionalmente.*")
+
+        with row2_col2:
+            st.subheader("Composición de Proveedores")
+            # Filtramos Top 15 para que el gráfico sea legible
+            top_prov_list = df_filtered["proveedor"].value_counts().nlargest(15).index
+            df_treemap = df_filtered[df_filtered["proveedor"].isin(top_prov_list)]
+            
+            # Treemap: Proveedor -> Estatus (o Medio de Ingreso si prefieres)
+            # Esto muestra quién tiene más quejas Y cómo las están manejando
+            fig_tree = px.treemap(
+                df_treemap,
+                path=[px.Constant("Todas"), "proveedor", "estatus"],
+                title="Top 15 Proveedores y Estatus de Queja",
+                color="proveedor" 
+            )
+            fig_tree.update_traces(root_color="lightgrey")
+            st.plotly_chart(fig_tree, use_container_width=True)
+
+        # --- BLOQUE 3: ANÁLISIS CRUZADO (HEATMAP) ---
+        st.subheader("🔥 Focos Rojos: Proveedores vs. Estados")
+        st.markdown("Identifica si un proveedor tiene fallas generalizadas o problemas localizados en ciertos estados.")
+
+        # Top 10 proveedores y Top 10 estados con más quejas para el heatmap
+        top_p = df_filtered["proveedor"].value_counts().nlargest(10).index
+        top_e = df_filtered["estado"].value_counts().nlargest(10).index
         
-        fig_bar = px.bar(
-            top_prov, 
-            x='Quejas', 
-            y='Proveedor', 
-            orientation='h',
-            text='Quejas',
-            color='Quejas',
-            color_continuous_scale='Blues',
-            title="Proveedores con más Reclamaciones"
-        )
-        fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    # -------------------------------------------------------------------------
-    # 3. FILA 2: ANÁLISIS DE CAUSAS Y MONTOS (SUNBURST Y BOXPLOT)
-    # -------------------------------------------------------------------------
-    st.markdown("#### 🔍 Profundización en Causas y Costos")
-    col_deep_1, col_deep_2 = st.columns(2)
-
-    with col_deep_1:
-        st.markdown("**Distribución Jerárquica: ¿De qué se quejan?**")
-        # Gráfico Sunburst: Categoría -> Motivo
-        # Usamos head(15) en motivos para no saturar visualmente
-        fig_sun = px.sunburst(
-            df_filtered, 
-            path=['categoria_problema', 'motivo_reclamacion'], 
-            values='costo_bien_servicio', # Tamaño por costo del servicio (o usa 'count' si prefieres frecuencia)
-            color='categoria_problema',
-            color_discrete_sequence=px.colors.qualitative.Pastel,
-            title="Jerarquía de Problemas (Click para explorar)"
-        )
-        fig_sun.update_layout(margin=dict(t=30, l=0, r=0, b=0))
-        st.plotly_chart(fig_sun, use_container_width=True)
-
-    with col_deep_2:
-        st.markdown("**Dispersión de Montos Reclamados**")
-        # Checkbox para interactividad en escala
-        log_scale = st.checkbox("Usar Escala Logarítmica (Recomendado para ver Outliers)", value=True, key="log_tab1")
+        df_heat = df_filtered[
+            (df_filtered["proveedor"].isin(top_p)) & 
+            (df_filtered["estado"].isin(top_e))
+        ]
         
-        # Filtramos ceros para evitar errores en log
-        df_money = df_filtered[df_filtered['monto_reclamado'] > 0]
+        # Crear matriz para heatmap
+        heatmap_data = pd.crosstab(df_heat["proveedor"], df_heat["estado"])
         
-        fig_box = px.box(
-            df_money, 
-            x='proveedor_top', 
-            y='monto_reclamado',
-            color='proveedor_top',
-            log_y=log_scale,
-            title=f"Distribución de Montos por Proveedor ({'Log' if log_scale else 'Lineal'})",
-            points="outliers" # Solo mostramos outliers como puntos
+        fig_heat = px.imshow(
+            heatmap_data,
+            labels=dict(x="Estado", y="Proveedor", color="N° Quejas"),
+            x=heatmap_data.columns,
+            y=heatmap_data.index,
+            text_auto=True, # Muestra los números dentro de los cuadros
+            aspect="auto",
+            color_continuous_scale="Viridis"
         )
-        fig_box.update_layout(showlegend=False, yaxis_title="Monto ($MXN)")
-        st.plotly_chart(fig_box, use_container_width=True)
-
-    # -------------------------------------------------------------------------
-    # 4. FILA 3: MAPA DE CALOR (CORRELACIÓN) - ¡EL FACTOR WOW!
-    # -------------------------------------------------------------------------
-    st.markdown("---")
-    st.subheader("🔥 Mapa de Calor: ¿Dónde le duele a cada empresa?")
-    st.markdown("Identifica patrones visuales: ¿Qué categoría afecta más a cada proveedor?")
-
-    # Creamos la matriz cruzada
-    heatmap_data = pd.crosstab(df_filtered['proveedor_top'], df_filtered['categoria_problema'])
-    
-    fig_heat = px.imshow(
-        heatmap_data,
-        text_auto=True, # Muestra los números en las celdas
-        aspect="auto",
-        color_continuous_scale="Reds",
-        labels=dict(x="Categoría del Problema", y="Proveedor", color="No. Quejas"),
-        title="Intensidad de Quejas por Categoría y Proveedor"
-    )
-    fig_heat.update_xaxes(side="top") # Pone las etiquetas arriba para leer mejor
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-    # -------------------------------------------------------------------------
-    # 5. EXPANDER CON DATOS RAW (PARA TRANSPARENCIA)
-    # -------------------------------------------------------------------------
-    with st.expander("📂 Ver Detalle de los Datos Filtrados"):
-        st.dataframe(
-            df_filtered[['fecha_ingreso', 'proveedor', 'motivo_reclamacion', 
-                         'monto_reclamado', 'costo_bien_servicio', 'estado_procesal']]
-            .sort_values(by='fecha_ingreso', ascending=False)
-            .head(1000) # Limitamos a 1000 para rendimiento
-        )
-        st.caption("Mostrando los últimos 1000 registros filtrados.")
+        st.plotly_chart(fig_heat, use_container_width=True)
 
 # TAB 2 — BLOQUE 4: ANÁLISIS ECONÓMICO E INFERENCIAL
 
@@ -407,6 +374,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
