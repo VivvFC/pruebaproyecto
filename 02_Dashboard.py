@@ -98,10 +98,10 @@ with tab1:
 
     # --- KPIs ---
     total_quejas = len(df_filtered)
-    proveedores_unicos = df_filtered["proveedor"].nunique()
+    proveedores_unicos = df_filtered["nombre_comercial"].nunique()
     # Calculamos % de conciliación (asumiendo que existe un estatus 'Conciliada' o similar, ajusta el string según tus datos)
     # Si no tienes una columna exacta para esto, puedes quitar esta métrica o ajustarla
-    conciliadas = df_filtered[df_filtered["estatus"].str.contains("Conciliada", case=False, na=False)].shape[0]
+    conciliadas = df_filtered[df_filtered["estado_procesal"].str.contains("Conciliada", case=False, na=False)].shape[0]
     pct_conciliacion = (conciliadas / total_quejas * 100) if total_quejas > 0 else 0
 
     kpi1, kpi2, kpi3 = st.columns(3)
@@ -160,35 +160,35 @@ with tab1:
     with row2_col2:
         st.subheader("Composición de Proveedores")
         # Filtramos Top 15 para que el gráfico sea legible
-        top_prov_list = df_filtered["proveedor"].value_counts().nlargest(15).index
-        df_treemap = df_filtered[df_filtered["proveedor"].isin(top_prov_list)]
+        top_prov_list = df_filtered["nombre_comercial"].value_counts().nlargest(15).index
+        df_treemap = df_filtered[df_filtered["nombre_comercial"].isin(top_prov_list)]
             
         # Treemap: Proveedor -> Estatus (o Medio de Ingreso si prefieres)
         # Esto muestra quién tiene más quejas Y cómo las están manejando
         fig_tree = px.treemap(
             df_treemap,
-            path=[px.Constant("Todas"), "proveedor", "estatus"],
+            path=[px.Constant("Todas"), "nombre_comercial", "estado_procesal"],
             title="Top 15 Proveedores y Estatus de Queja",
-            color="proveedor" 
+            color="nombre_comercial" 
         )
         fig_tree.update_traces(root_color="lightgrey")
         st.plotly_chart(fig_tree, use_container_width=True)
 
     # --- BLOQUE 3: ANÁLISIS CRUZADO (HEATMAP) ---
     st.subheader("🔥 Focos Rojos: Proveedores vs. Estados")
-    st.markdown("Identifica si un proveedor tiene fallas generalizadas o problemas localizados en ciertos estados.")
+    st.markdown("Identifica si un nombre_comercial tiene fallas generalizadas o problemas localizados en ciertos estados.")
 
     # Top 10 proveedores y Top 10 estados con más quejas para el heatmap
-    top_p = df_filtered["proveedor"].value_counts().nlargest(10).index
+    top_p = df_filtered["nombre_comercial"].value_counts().nlargest(10).index
     top_e = df_filtered["estado"].value_counts().nlargest(10).index
         
     df_heat = df_filtered[
-        (df_filtered["proveedor"].isin(top_p)) & 
+        (df_filtered["nombre_comercial"].isin(top_p)) & 
         (df_filtered["estado"].isin(top_e))
     ]
         
     # Crear matriz para heatmap
-    heatmap_data = pd.crosstab(df_heat["proveedor"], df_heat["estado"])
+    heatmap_data = pd.crosstab(df_heat["nombre_comercial"], df_heat["estado"])
         
     fig_heat = px.imshow(
     heatmap_data,
@@ -373,6 +373,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
