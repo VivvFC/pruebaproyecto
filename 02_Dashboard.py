@@ -79,41 +79,6 @@ if "proveedor_top" not in perfil_df.columns:
 
 perfil_df["_key_prov"] = limpiar_clave(perfil_df["proveedor_top"])
 
-ISO_MX = {
-    "AGUASCALIENTES": "MX-AGU",
-    "BAJA CALIFORNIA": "MX-BCN",
-    "BAJA CALIFORNIA SUR": "MX-BCS",
-    "CAMPECHE": "MX-CAM",
-    "CHIAPAS": "MX-CHP",
-    "CHIHUAHUA": "MX-CHH",
-    "CIUDAD DE MEXICO": "MX-CMX",
-    "COAHUILA": "MX-COA",
-    "COLIMA": "MX-COL",
-    "DURANGO": "MX-DUR",
-    "ESTADO DE MEXICO": "MX-MEX",
-    "GUANAJUATO": "MX-GUA",
-    "GUERRERO": "MX-GRO",
-    "HIDALGO": "MX-HID",
-    "JALISCO": "MX-JAL",
-    "MICHOACAN": "MX-MIC",
-    "MORELOS": "MX-MOR",
-    "NAYARIT": "MX-NAY",
-    "NUEVO LEON": "MX-NLE",
-    "OAXACA": "MX-OAX",
-    "PUEBLA": "MX-PUE",
-    "QUERETARO": "MX-QUE",
-    "QUINTANA ROO": "MX-ROO",
-    "SAN LUIS POTOSI": "MX-SLP",
-    "SINALOA": "MX-SIN",
-    "SONORA": "MX-SON",
-    "TABASCO": "MX-TAB",
-    "TAMAULIPAS": "MX-TAM",
-    "TLAXCALA": "MX-TLA",
-    "VERACRUZ": "MX-VER",
-    "YUCATAN": "MX-YUC",
-    "ZACATECAS": "MX-ZAC"
-}
-
 # PESTAÑAS
 
 
@@ -225,71 +190,50 @@ with tab1:
             st.info("Falta información de usuarios para calcular la tasa.")
 
     # =========================================================================
-    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (ISO — SIN GEOJSON)
+    # SECCIÓN 2: RANKING GEOGRÁFICO (REEMPLAZO DEL MAPA)
     # =========================================================================
-    st.subheader("📍 Intensidad de Quejas por Estado")
-    st.markdown("Mapa de calor normalizado: Quejas por cada 100,000 habitantes.")
-
-    # ---------------------------------------------------------
-    # 1. Conteo de quejas por estado
-    # ---------------------------------------------------------
-    quejas_edo = (
-        df_filtered["_key_estado"]
-        .value_counts()
-        .reset_index()
-    )
-    quejas_edo.columns = ["_key_estado", "quejas"]
-
-    # ---------------------------------------------------------
-    # 2. Merge con población
-    # ---------------------------------------------------------
-    df_ranking = pd.merge(
-        quejas_edo,
-        df_pob,
-        on="_key_estado",
-        how="left"
-    )
-
-    # ---------------------------------------------------------
-    # 3. Población y tasa
-    # ---------------------------------------------------------
-    col_pob_num = df_pob.select_dtypes(include=[np.number]).columns[-1]
-    df_ranking["poblacion_total"] = df_ranking[col_pob_num].fillna(1)
-    df_ranking["tasa_100k"] = (
-        df_ranking["quejas"] / df_ranking["poblacion_total"]
-    ) * 100000
-
-    # ---------------------------------------------------------
-    # 4. ISO codes
-    # ---------------------------------------------------------
-    df_ranking["iso"] = df_ranking["_key_estado"].map(ISO_MX)
-    df_map = df_ranking.dropna(subset=["iso"])
-
-    # ---------------------------------------------------------
-    # 5. Choropleth SIN geojson
-    # ---------------------------------------------------------
-    fig_map = px.choropleth(
-        df_map,
-        locations="iso",
-        color="tasa_100k",
-        scope="north america",
-        color_continuous_scale="Reds",
-        range_color=(0, df_map["tasa_100k"].quantile(0.95)),
-        labels={"tasa_100k": "Tasa x 100k"},
-        title="Tasa de Quejas por Estado (x 100k hab)"
-    )
-
-    fig_map.update_geos(
-        fitbounds="locations",
-        visible=False
-    )
-
-    fig_map.update_layout(
-        margin={"r": 0, "t": 40, "l": 0, "b": 0}
-    )
-
-    st.plotly_chart(fig_map, use_container_width=True)
+    st.subheader("📍 Ranking por Estado (Tasa por 100k hab)")
+    st.markdown("Estados con mayor incidencia de quejas ajustado por su población.")
+    
+    try:
+        # 1. Agrupar por la clave limpia
+        quejas_edo = df_filtered["_key_estado"].value_counts().reset_index()
+        quejas_edo.columns = ["_key_estado", "quejas"]
         
+        # 2. Merge con Población
+        df_ranking = pd.merge(quejas_edo, df_pob, on="_key_estado", how="left")
+        
+        # 3. Calcular Tasa
+        df_ranking["_pob_uso"] = pd.to_numeric(df_ranking["_pob_uso"], errors='coerce').fillna(1)
+        df_ranking["tasa_100k"] = (df_ranking["quejas"] / df_ranking["_pob_uso"]) * 100000
+        
+        # 4. Recuperar el nombre original del estado (para que se vea bonito en la gráfica)
+        # Hacemos un merge inverso con el DF original para traer 'estado' original
+        # O simplemente tomamos el primer 'estado' que coincida con la key
+        lookup_names = df_filtered[["_key_estado", "estado"]].drop_duplicates().set_index("_key_estado")
+        df_ranking["nombre_estado"] = df_ranking["_key_estado"].map(lookup_names["estado"]).fillna(df_ranking["_key_estado"])
+        
+        # 5. Ordenar
+        df_ranking = df_ranking.sort_values("tasa_100k", ascending=True) # Ascendente para que el mayor salga arriba en barh
+        
+        # 6. Gráfico de Barras
+        fig_rank = px.bar(
+            df_ranking,
+            x="tasa_100k",
+            y="nombre_estado",
+            orientation='h',
+            text_auto=".1f",
+            color="tasa_100k",
+            color_continuous_scale="Reds",
+            title=f"Incidencia de Quejas (Base: {col_pob_target})",
+            labels={"tasa_100k": "Quejas por 100k hab", "nombre_estado": ""}
+        )
+        fig_rank.update_layout(height=600) # Un poco más alto para que quepan todos
+        st.plotly_chart(fig_rank, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"Error calculando el ranking: {e}")
+
     # =========================================================================
     # SECCIÓN 3: RESOLUCIÓN Y FOCOS ROJOS
     # =========================================================================
@@ -529,35 +473,3 @@ with tab3:
         ),
         use_container_width=True
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
