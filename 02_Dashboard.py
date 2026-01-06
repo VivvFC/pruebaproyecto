@@ -78,22 +78,22 @@ with tab1:
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         # Filtro de Fechas
-        f_min = df_main["fecha_ingreso"].min()
-        f_max = df_main["fecha_ingreso"].max()
+        f_min = df["fecha_ingreso"].min()
+        f_max = df["fecha_ingreso"].max()
         date_range = st.date_input("Rango de Fechas", [f_min, f_max])
     
     with col_f2:
         # Filtro de Estados
-        all_states = sorted(df_main["estado"].unique())
+        all_states = sorted(df["estado"].unique())
         selected_states = st.multiselect("Filtrar Estados (Deja vacío para ver todos)", all_states, default=all_states)
 
     # --- APLICACIÓN DE FILTROS ---
     # 1. Filtro de fecha
     if len(date_range) == 2:
-        mask_date = (df_main["fecha_ingreso"].dt.date >= date_range[0]) & (df_main["fecha_ingreso"].dt.date <= date_range[1])
-        df_filtered = df_main[mask_date].copy()
+        mask_date = (df["fecha_ingreso"].dt.date >= date_range[0]) & (df["fecha_ingreso"].dt.date <= date_range[1])
+        df_filtered = df[mask_date].copy()
     else:
-        df_filtered = df_main.copy()
+        df_filtered = df.copy()
 
     # 2. Filtro de estado
     if selected_states:
@@ -388,6 +388,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
