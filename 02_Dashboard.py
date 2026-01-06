@@ -79,22 +79,22 @@ with tab1:
     with col_f1:
         date_range = st.date_input(
             "Selecciona rango de fechas",
-            [df_main["fecha_ingreso"].min(), df_main["fecha_ingreso"].max()]
+            [df["fecha_ingreso"].min(), df["fecha_ingreso"].max()]
         )
     with col_f2:
         # Filtro opcional de estados para no saturar si no se desea
-        all_states = sorted(df_main["estado"].unique())
+        all_states = sorted(df["estado"].unique())
         selected_states = st.multiselect("Filtrar por Estados (Opcional)", all_states, default=all_states)
 
     # Aplicar filtros
     mask = (
-        (df_main["fecha_ingreso"].dt.date >= date_range[0]) &
-        (df_main["fecha_ingreso"].dt.date <= date_range[1])
+        (df["fecha_ingreso"].dt.date >= date_range[0]) &
+        (df["fecha_ingreso"].dt.date <= date_range[1])
     )
     if selected_states:
-        mask = mask & (df_main["estado"].isin(selected_states))
+        mask = mask & (df["estado"].isin(selected_states))
         
-    df_filtered = df_main[mask].copy()
+    df_filtered = df[mask].copy()
 
     # --- KPIs ---
     total_quejas = len(df_filtered)
@@ -134,7 +134,7 @@ with tab1:
         quejas_edo = df_filtered["estado"].value_counts().reset_index()
         quejas_edo.columns = ["estado", "quejas"]
             
-        # Asegúrate que los nombres de estados coincidan entre df_main y df_poblacion
+        # Asegúrate que los nombres de estados coincidan entre df y df_poblacion
         # Hacemos un merge left
         df_mapa = pd.merge(quejas_edo, df_pob, left_on="estado", right_on="estado", how="left")
             
@@ -373,6 +373,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
