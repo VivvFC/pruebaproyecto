@@ -190,15 +190,15 @@ with tab1:
     # Crear matriz para heatmap
     heatmap_data = pd.crosstab(df_heat["proveedor"], df_heat["estado"])
         
-        fig_heat = px.imshow(
-        heatmap_data,
-        labels=dict(x="Estado", y="Proveedor", color="N° Quejas"),
-        x=heatmap_data.columns,
-        y=heatmap_data.index,
-        text_auto=True, # Muestra los números dentro de los cuadros
-        aspect="auto",
-        color_continuous_scale="Viridis"
-    )
+    fig_heat = px.imshow(
+    heatmap_data,
+    labels=dict(x="Estado", y="Proveedor", color="N° Quejas"),
+    x=heatmap_data.columns,
+    y=heatmap_data.index,
+    text_auto=True, # Muestra los números dentro de los cuadros
+    aspect="auto",
+    color_continuous_scale="Viridis"
+)
     st.plotly_chart(fig_heat, use_container_width=True)
 
 # TAB 2 — BLOQUE 4: ANÁLISIS ECONÓMICO E INFERENCIAL
@@ -373,6 +373,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
