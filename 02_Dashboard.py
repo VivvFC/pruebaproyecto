@@ -52,6 +52,36 @@ corr_df = load_corr()
 
 st.title("Análisis de Quejas en Telecomunicaciones (PROFECO 2022–2025)")
 
+# Llevamos todo a minúsculas para no pelear con mayúsculas/minúsculas
+df.columns = df.columns.str.lower().str.strip()
+df_pob.columns = df_pob.columns.str.lower().str.strip()
+perfil_df.columns = perfil_df.columns.str.lower().str.strip()
+
+# Aseguramos que 'proveedor_top' sea una columna y no el índice en perfil_df
+if 'proveedor_top' not in perfil_df.columns:
+    perfil_df = perfil_df.reset_index()
+    # Si al resetear el indice se llama 'index', buscamos renombrarlo si contiene los nombres
+    if 'proveedor_top' not in perfil_df.columns:
+        # Intento de adivinar si la columna 0 es el proveedor
+        perfil_df.rename(columns={perfil_df.columns[0]: 'proveedor_top'}, inplace=True)
+
+# --- 2. FUNCIÓN DE LIMPIEZA DE TEXTO (Vital para cruces) ---
+def limpiar_texto(series):
+    if series is None: return None
+    # Quita acentos, pasa a mayúsculas y quita espacios
+    return series.astype(str).str.upper().str.strip().str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
+
+# Limpiamos las llaves de cruce
+df["nombre_norm"] = limpiar_texto(df["nombre_comercial"])
+df["estado_norm"] = limpiar_texto(df["estado"])
+
+# Limpiamos perfil_df para cruzar usuarios
+perfil_df["proveedor_norm"] = limpiar_texto(perfil_df["proveedor_top"])
+
+# Limpiamos df_pob para el mapa
+col_estado_pob = [c for c in df_pob.columns if 'estado' in c or 'entidad' in c][0]
+df_pob["estado_norm"] = limpiar_texto(df_pob[col_estado_pob])
+
 
 # PESTAÑAS
 
@@ -437,6 +467,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
