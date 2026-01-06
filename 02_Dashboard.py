@@ -190,49 +190,66 @@ with tab1:
             st.info("Falta información de usuarios para calcular la tasa.")
 
     # =========================================================================
-    # SECCIÓN 2: RANKING GEOGRÁFICO (REEMPLAZO DEL MAPA)
+    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (CHOROPLETH)
     # =========================================================================
-    st.subheader("📍 Ranking por Estado (Tasa por 100k hab)")
-    st.markdown("Estados con mayor incidencia de quejas ajustado por su población.")
-    
+    st.subheader("📍 Intensidad de Quejas por Estado")
+    st.markdown("Mapa de calor normalizado: Quejas por cada 100,000 habitantes.")
+
     try:
-        # 1. Agrupar por la clave limpia
+        # 1. Agrupar por la clave limpia para contar quejas
         quejas_edo = df_filtered["_key_estado"].value_counts().reset_index()
         quejas_edo.columns = ["_key_estado", "quejas"]
         
         # 2. Merge con Población
+        # Usamos _key_estado para cruzar datos seguramente
         df_ranking = pd.merge(quejas_edo, df_pob, on="_key_estado", how="left")
         
         # 3. Calcular Tasa
-        df_ranking["_pob_uso"] = pd.to_numeric(df_ranking["_pob_uso"], errors='coerce').fillna(1)
-        df_ranking["tasa_100k"] = (df_ranking["quejas"] / df_ranking["_pob_uso"]) * 100000
+        # Usamos la columna de población detectada anteriormente (ej. '2025' o '2020')
+        col_pob_num = df_pob.select_dtypes(include=[np.number]).columns[-1] # Toma la última col numérica (2025 en tu caso)
         
-        # 4. Recuperar el nombre original del estado (para que se vea bonito en la gráfica)
-        # Hacemos un merge inverso con el DF original para traer 'estado' original
-        # O simplemente tomamos el primer 'estado' que coincida con la key
-        lookup_names = df_filtered[["_key_estado", "estado"]].drop_duplicates().set_index("_key_estado")
-        df_ranking["nombre_estado"] = df_ranking["_key_estado"].map(lookup_names["estado"]).fillna(df_ranking["_key_estado"])
+        df_ranking["poblacion_total"] = df_ranking[col_pob_num].fillna(1)
+        df_ranking["tasa_100k"] = (df_ranking["quejas"] / df_ranking["poblacion_total"]) * 100000
         
-        # 5. Ordenar
-        df_ranking = df_ranking.sort_values("tasa_100k", ascending=True) # Ascendente para que el mayor salga arriba en barh
+        # 4. RECUPERAR EL NOMBRE "BONITO" PARA EL MAPA
+        # El mapa necesita el nombre con acentos (ej. "Yucatán") para coincidir con el GeoJSON
+        # Hacemos un merge para traer la columna "estado" original de tu df_pob que vi en la imagen
+        # Asumimos que la primera columna de df_pob es el nombre correcto (según tu imagen)
+        col_nombre_mapa = df_pob.columns[0] # "estado"
         
-        # 6. Gráfico de Barras
-        fig_rank = px.bar(
+        # Mapeamos la key limpia al nombre bonito del df_pob
+        dict_nombres = dict(zip(df_pob["_key_estado"], df_pob[col_nombre_mapa]))
+        df_ranking["nombre_mapa"] = df_ranking["_key_estado"].map(dict_nombres)
+        
+        # 5. CONFIGURACIÓN DEL MAPA
+        # Este GeoJSON es estándar y suele coincidir con nombres oficiales (con acentos)
+        url_geojson = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json"
+
+        fig_map = px.choropleth(
             df_ranking,
-            x="tasa_100k",
-            y="nombre_estado",
-            orientation='h',
-            text_auto=".1f",
+            geojson=url_geojson,
+            locations="nombre_mapa",      # Columna de tu DF con nombres (ej: "Yucatán")
+            featureidkey="properties.name", # Propiedad del GeoJSON a buscar
             color="tasa_100k",
             color_continuous_scale="Reds",
-            title=f"Incidencia de Quejas (Base: {col_pob_target})",
-            labels={"tasa_100k": "Quejas por 100k hab", "nombre_estado": ""}
+            range_color=(0, df_ranking["tasa_100k"].quantile(0.95)), # Ajuste de contraste (ignora outliers extremos)
+            hover_name="nombre_mapa",
+            hover_data={"quejas": True, "poblacion_total": True, "nombre_mapa": False, "tasa_100k": ":.1f"},
+            title="Tasa de Quejas (x 100k hab)"
         )
-        fig_rank.update_layout(height=600) # Un poco más alto para que quepan todos
-        st.plotly_chart(fig_rank, use_container_width=True)
+
+        # Ajustes estéticos para centrar en México y quitar marcos
+        fig_map.update_geos(fitbounds="locations", visible=False)
+        fig_map.update_layout(
+            margin={"r":0,"t":30,"l":0,"b":0},
+            coloraxis_colorbar_title="Tasa"
+        )
+        
+        st.plotly_chart(fig_map, use_container_width=True)
         
     except Exception as e:
-        st.error(f"Error calculando el ranking: {e}")
+        st.error(f"No se pudo generar el mapa: {e}")
+        st.caption("Verifica que los nombres de los estados en 'poblacion_edos.csv' coincidan con el estándar (ej. 'Ciudad de México', 'Nuevo León').")
 
     # =========================================================================
     # SECCIÓN 3: RESOLUCIÓN Y FOCOS ROJOS
@@ -473,6 +490,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
