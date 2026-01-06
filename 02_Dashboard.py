@@ -67,140 +67,139 @@ tab1, tab2, tab3 = st.tabs([
 
 # ... (El código anterior de carga de datos y sidebar se mantiene igual)
 
-    # =============================================================================
-    # PESTAÑA 1: ANÁLISIS DESCRIPTIVO
-    # =============================================================================
+# =============================================================================
+# PESTAÑA 1: ANÁLISIS DESCRIPTIVO
+# =============================================================================
     
-    with tab1:
-        st.markdown("### 🔍 Panorama General de Quejas")
+with tab1:
+    st.markdown("### 🔍 Panorama General de Quejas")
         
-        # --- FILTROS ESPECÍFICOS DE LA PESTAÑA ---
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            date_range = st.date_input(
-                "Selecciona rango de fechas",
-                [df_main["fecha_ingreso"].min(), df_main["fecha_ingreso"].max()]
-            )
-        with col_f2:
-            # Filtro opcional de estados para no saturar si no se desea
-            all_states = sorted(df_main["estado"].unique())
-            selected_states = st.multiselect("Filtrar por Estados (Opcional)", all_states, default=all_states)
-
-        # Aplicar filtros
-        mask = (
-            (df_main["fecha_ingreso"].dt.date >= date_range[0]) &
-            (df_main["fecha_ingreso"].dt.date <= date_range[1])
+    # --- FILTROS ESPECÍFICOS DE LA PESTAÑA ---
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        date_range = st.date_input(
+            "Selecciona rango de fechas",
+            [df_main["fecha_ingreso"].min(), df_main["fecha_ingreso"].max()]
         )
-        if selected_states:
-            mask = mask & (df_main["estado"].isin(selected_states))
-            
-        df_filtered = df_main[mask].copy()
+    with col_f2:
+        # Filtro opcional de estados para no saturar si no se desea
+        all_states = sorted(df_main["estado"].unique())
+        selected_states = st.multiselect("Filtrar por Estados (Opcional)", all_states, default=all_states)
 
-        # --- KPIs ---
-        total_quejas = len(df_filtered)
-        proveedores_unicos = df_filtered["proveedor"].nunique()
-        # Calculamos % de conciliación (asumiendo que existe un estatus 'Conciliada' o similar, ajusta el string según tus datos)
-        # Si no tienes una columna exacta para esto, puedes quitar esta métrica o ajustarla
-        conciliadas = df_filtered[df_filtered["estatus"].str.contains("Conciliada", case=False, na=False)].shape[0]
-        pct_conciliacion = (conciliadas / total_quejas * 100) if total_quejas > 0 else 0
-
-        kpi1, kpi2, kpi3 = st.columns(3)
-        kpi1.metric("Total de Quejas", f"{total_quejas:,}")
-        kpi2.metric("Proveedores Involucrados", f"{proveedores_unicos}")
-        kpi3.metric("% Conciliación Aprox.", f"{pct_conciliacion:.1f}%")
-
-        st.markdown("---")
-
-        # --- BLOQUE 1: EVOLUCIÓN (La que te gusta) ---
-        # Agrupamos por mes para ver la tendencia
-        df_evo = df_filtered.set_index("fecha_ingreso").resample("M").size().reset_index(name="conteo")
+    # Aplicar filtros
+    mask = (
+        (df_main["fecha_ingreso"].dt.date >= date_range[0]) &
+        (df_main["fecha_ingreso"].dt.date <= date_range[1])
+    )
+    if selected_states:
+        mask = mask & (df_main["estado"].isin(selected_states))
         
-        fig_evo = px.line(
-            df_evo, 
-            x="fecha_ingreso", 
-            y="conteo", 
-            markers=True,
-            title="📈 Evolución Mensual de Quejas",
-            labels={"fecha_ingreso": "Fecha", "conteo": "Número de Quejas"}
+    df_filtered = df_main[mask].copy()
+
+    # --- KPIs ---
+    total_quejas = len(df_filtered)
+    proveedores_unicos = df_filtered["proveedor"].nunique()
+    # Calculamos % de conciliación (asumiendo que existe un estatus 'Conciliada' o similar, ajusta el string según tus datos)
+    # Si no tienes una columna exacta para esto, puedes quitar esta métrica o ajustarla
+    conciliadas = df_filtered[df_filtered["estatus"].str.contains("Conciliada", case=False, na=False)].shape[0]
+    pct_conciliacion = (conciliadas / total_quejas * 100) if total_quejas > 0 else 0
+
+    kpi1, kpi2, kpi3 = st.columns(3)
+    kpi1.metric("Total de Quejas", f"{total_quejas:,}")
+    kpi2.metric("Proveedores Involucrados", f"{proveedores_unicos}")
+    kpi3.metric("% Conciliación Aprox.", f"{pct_conciliacion:.1f}%")
+    st.markdown("---")
+
+    # --- BLOQUE 1: EVOLUCIÓN (La que te gusta) ---
+    # Agrupamos por mes para ver la tendencia
+    df_evo = df_filtered.set_index("fecha_ingreso").resample("M").size().reset_index(name="conteo")
+        
+    fig_evo = px.line(
+        df_evo, 
+        x="fecha_ingreso", 
+        y="conteo", 
+        markers=True,
+        title="📈 Evolución Mensual de Quejas",
+        labels={"fecha_ingreso": "Fecha", "conteo": "Número de Quejas"}
+     )
+    fig_evo.update_layout(xaxis_title=None)
+    st.plotly_chart(fig_evo, use_container_width=True)
+
+    # --- BLOQUE 2: MAPA NORMALIZADO Y TREEMAP ---
+    row2_col1, row2_col2 = st.columns([1, 1])
+
+    with row2_col1:
+        st.subheader("Geografía del Reclamo")
+        # Preparación de datos para el mapa: Cruce con Población
+        quejas_edo = df_filtered["estado"].value_counts().reset_index()
+        quejas_edo.columns = ["estado", "quejas"]
+            
+        # Asegúrate que los nombres de estados coincidan entre df_main y df_poblacion
+        # Hacemos un merge left
+        df_mapa = pd.merge(quejas_edo, df_pob, left_on="estado", right_on="estado", how="left")
+            
+        # Cálculo de Tasa por 100k habitantes (Más valioso que el conteo simple)
+        # Si hay algún estado que no cruzó (NaN), rellenamos con 0 para evitar error
+        df_mapa["poblacion"] = df_mapa["poblacion"].fillna(1) 
+        df_mapa["tasa_100k"] = (df_mapa["quejas"] / df_mapa["poblacion"]) * 100000
+
+        fig_map = px.choropleth(
+            df_mapa,
+            geojson="https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json", # GeoJSON público de México
+            locations="estado",
+            featureidkey="properties.name",
+            color="tasa_100k",
+            color_continuous_scale="Reds",
+            title="Quejas por cada 100k Habitantes (Intensidad Real)",
+            hover_data=["quejas", "poblacion"]
         )
-        fig_evo.update_layout(xaxis_title=None)
-        st.plotly_chart(fig_evo, use_container_width=True)
+        fig_map.update_geos(fitbounds="locations", visible=False)
+        st.plotly_chart(fig_map, use_container_width=True)
+        st.caption("*El mapa muestra la densidad de quejas relativa a la población, revelando dónde el problema es más agudo proporcionalmente.*")
 
-        # --- BLOQUE 2: MAPA NORMALIZADO Y TREEMAP ---
-        row2_col1, row2_col2 = st.columns([1, 1])
-
-        with row2_col1:
-            st.subheader("Geografía del Reclamo")
-            # Preparación de datos para el mapa: Cruce con Población
-            quejas_edo = df_filtered["estado"].value_counts().reset_index()
-            quejas_edo.columns = ["estado", "quejas"]
+    with row2_col2:
+        st.subheader("Composición de Proveedores")
+        # Filtramos Top 15 para que el gráfico sea legible
+        top_prov_list = df_filtered["proveedor"].value_counts().nlargest(15).index
+        df_treemap = df_filtered[df_filtered["proveedor"].isin(top_prov_list)]
             
-            # Asegúrate que los nombres de estados coincidan entre df_main y df_poblacion
-            # Hacemos un merge left
-            df_mapa = pd.merge(quejas_edo, df_pob, left_on="estado", right_on="estado", how="left")
-            
-            # Cálculo de Tasa por 100k habitantes (Más valioso que el conteo simple)
-            # Si hay algún estado que no cruzó (NaN), rellenamos con 0 para evitar error
-            df_mapa["poblacion"] = df_mapa["poblacion"].fillna(1) 
-            df_mapa["tasa_100k"] = (df_mapa["quejas"] / df_mapa["poblacion"]) * 100000
+        # Treemap: Proveedor -> Estatus (o Medio de Ingreso si prefieres)
+        # Esto muestra quién tiene más quejas Y cómo las están manejando
+        fig_tree = px.treemap(
+            df_treemap,
+            path=[px.Constant("Todas"), "proveedor", "estatus"],
+            title="Top 15 Proveedores y Estatus de Queja",
+            color="proveedor" 
+        )
+        fig_tree.update_traces(root_color="lightgrey")
+        st.plotly_chart(fig_tree, use_container_width=True)
 
-            fig_map = px.choropleth(
-                df_mapa,
-                geojson="https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json", # GeoJSON público de México
-                locations="estado",
-                featureidkey="properties.name",
-                color="tasa_100k",
-                color_continuous_scale="Reds",
-                title="Quejas por cada 100k Habitantes (Intensidad Real)",
-                hover_data=["quejas", "poblacion"]
-            )
-            fig_map.update_geos(fitbounds="locations", visible=False)
-            st.plotly_chart(fig_map, use_container_width=True)
-            st.caption("*El mapa muestra la densidad de quejas relativa a la población, revelando dónde el problema es más agudo proporcionalmente.*")
+    # --- BLOQUE 3: ANÁLISIS CRUZADO (HEATMAP) ---
+    st.subheader("🔥 Focos Rojos: Proveedores vs. Estados")
+    st.markdown("Identifica si un proveedor tiene fallas generalizadas o problemas localizados en ciertos estados.")
 
-        with row2_col2:
-            st.subheader("Composición de Proveedores")
-            # Filtramos Top 15 para que el gráfico sea legible
-            top_prov_list = df_filtered["proveedor"].value_counts().nlargest(15).index
-            df_treemap = df_filtered[df_filtered["proveedor"].isin(top_prov_list)]
-            
-            # Treemap: Proveedor -> Estatus (o Medio de Ingreso si prefieres)
-            # Esto muestra quién tiene más quejas Y cómo las están manejando
-            fig_tree = px.treemap(
-                df_treemap,
-                path=[px.Constant("Todas"), "proveedor", "estatus"],
-                title="Top 15 Proveedores y Estatus de Queja",
-                color="proveedor" 
-            )
-            fig_tree.update_traces(root_color="lightgrey")
-            st.plotly_chart(fig_tree, use_container_width=True)
-
-        # --- BLOQUE 3: ANÁLISIS CRUZADO (HEATMAP) ---
-        st.subheader("🔥 Focos Rojos: Proveedores vs. Estados")
-        st.markdown("Identifica si un proveedor tiene fallas generalizadas o problemas localizados en ciertos estados.")
-
-        # Top 10 proveedores y Top 10 estados con más quejas para el heatmap
-        top_p = df_filtered["proveedor"].value_counts().nlargest(10).index
-        top_e = df_filtered["estado"].value_counts().nlargest(10).index
+    # Top 10 proveedores y Top 10 estados con más quejas para el heatmap
+    top_p = df_filtered["proveedor"].value_counts().nlargest(10).index
+    top_e = df_filtered["estado"].value_counts().nlargest(10).index
         
-        df_heat = df_filtered[
-            (df_filtered["proveedor"].isin(top_p)) & 
-            (df_filtered["estado"].isin(top_e))
-        ]
+    df_heat = df_filtered[
+        (df_filtered["proveedor"].isin(top_p)) & 
+        (df_filtered["estado"].isin(top_e))
+    ]
         
-        # Crear matriz para heatmap
-        heatmap_data = pd.crosstab(df_heat["proveedor"], df_heat["estado"])
+    # Crear matriz para heatmap
+    heatmap_data = pd.crosstab(df_heat["proveedor"], df_heat["estado"])
         
         fig_heat = px.imshow(
-            heatmap_data,
-            labels=dict(x="Estado", y="Proveedor", color="N° Quejas"),
-            x=heatmap_data.columns,
-            y=heatmap_data.index,
-            text_auto=True, # Muestra los números dentro de los cuadros
-            aspect="auto",
-            color_continuous_scale="Viridis"
-        )
-        st.plotly_chart(fig_heat, use_container_width=True)
+        heatmap_data,
+        labels=dict(x="Estado", y="Proveedor", color="N° Quejas"),
+        x=heatmap_data.columns,
+        y=heatmap_data.index,
+        text_auto=True, # Muestra los números dentro de los cuadros
+        aspect="auto",
+        color_continuous_scale="Viridis"
+    )
+    st.plotly_chart(fig_heat, use_container_width=True)
 
 # TAB 2 — BLOQUE 4: ANÁLISIS ECONÓMICO E INFERENCIAL
 
@@ -374,6 +373,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
