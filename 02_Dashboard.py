@@ -95,6 +95,10 @@ tab1, tab2, tab3 = st.tabs([
 # PESTAÑA 1: ANÁLISIS DESCRIPTIVO (VERSIÓN CORREGIDA FINAL)
 # =============================================================================
 
+# =============================================================================
+# PESTAÑA 1: ANÁLISIS DESCRIPTIVO (VERSIÓN FINAL AJUSTADA)
+# =============================================================================
+
 with tab1:
     st.markdown("### 🔍 Panorama General de Quejas")
     
@@ -190,13 +194,18 @@ with tab1:
             st.info("Falta información de usuarios para calcular la tasa.")
 
     # =========================================================================
-    # SECCIÓN 2: RANKING GEOGRÁFICO (REEMPLAZO DEL MAPA)
+    # SECCIÓN 2: RANKING GEOGRÁFICO (MODIFICADO)
     # =========================================================================
-    st.subheader("📍 Ranking por Estado (Tasa por 100k hab)")
-    st.markdown("Estados con mayor incidencia de quejas ajustado por su población.")
-    
+    st.markdown("---")
+    c_rank_head, c_rank_opt = st.columns([2, 1])
+    with c_rank_head:
+        st.subheader("📍 Ranking por Estado")
+    with c_rank_opt:
+        # Checkbox para quitar CDMX
+        ocultar_cdmx_rank = st.checkbox("Ocultar CDMX/EdoMex (Zoom)", value=False, key="rank_exclude")
+
     try:
-        # 1. Agrupar por la clave limpia
+        # 1. Agrupar
         quejas_edo = df_filtered["_key_estado"].value_counts().reset_index()
         quejas_edo.columns = ["_key_estado", "quejas"]
         
@@ -207,16 +216,21 @@ with tab1:
         df_ranking["_pob_uso"] = pd.to_numeric(df_ranking["_pob_uso"], errors='coerce').fillna(1)
         df_ranking["tasa_100k"] = (df_ranking["quejas"] / df_ranking["_pob_uso"]) * 100000
         
-        # 4. Recuperar el nombre original del estado (para que se vea bonito en la gráfica)
-        # Hacemos un merge inverso con el DF original para traer 'estado' original
-        # O simplemente tomamos el primer 'estado' que coincida con la key
+        # 4. Recuperar nombre
         lookup_names = df_filtered[["_key_estado", "estado"]].drop_duplicates().set_index("_key_estado")
         df_ranking["nombre_estado"] = df_ranking["_key_estado"].map(lookup_names["estado"]).fillna(df_ranking["_key_estado"])
         
-        # 5. Ordenar
-        df_ranking = df_ranking.sort_values("tasa_100k", ascending=True) # Ascendente para que el mayor salga arriba en barh
+        # 5. FILTRO OPCIONAL DE CDMX (Aquí está la lógica nueva)
+        if ocultar_cdmx_rank:
+            # Filtramos cualquier cosa que parezca CDMX, DF o Mexico (Estado)
+            df_ranking = df_ranking[~df_ranking["_key_estado"].str.contains("CIUDAD|DISTRITO|MEXICO", regex=True)]
+
+        # 6. Ordenar y Graficar
+        df_ranking = df_ranking.sort_values("tasa_100k", ascending=True) 
         
-        # 6. Gráfico de Barras
+        # Ajustamos altura dinámica según la cantidad de estados
+        altura_grafica = max(400, len(df_ranking) * 25)
+
         fig_rank = px.bar(
             df_ranking,
             x="tasa_100k",
@@ -225,18 +239,19 @@ with tab1:
             text_auto=".1f",
             color="tasa_100k",
             color_continuous_scale="Reds",
-            title=f"Incidencia de Quejas (Base: {col_pob_target})",
-            labels={"tasa_100k": "Quejas por 100k hab", "nombre_estado": ""}
+            title=f"Incidencia (Quejas x 100k hab) - Base: {col_pob_target}",
+            labels={"tasa_100k": "Tasa", "nombre_estado": ""}
         )
-        fig_rank.update_layout(height=600) # Un poco más alto para que quepan todos
+        fig_rank.update_layout(height=altura_grafica)
         st.plotly_chart(fig_rank, use_container_width=True)
         
     except Exception as e:
         st.error(f"Error calculando el ranking: {e}")
 
     # =========================================================================
-    # SECCIÓN 3: RESOLUCIÓN Y FOCOS ROJOS
+    # SECCIÓN 3: RESOLUCIÓN Y MATRIZ DE CALOR (MODIFICADO)
     # =========================================================================
+    st.markdown("---")
     r2_c1, r2_c2 = st.columns(2)
 
     with r2_c1:
@@ -258,13 +273,18 @@ with tab1:
     with r2_c2:
         st.subheader("🔥 Matriz de Calor")
         
-        # Opción para ocultar CDMX si sigue saliendo muy alta
-        exclude_cdmx = st.checkbox("Ocultar CDMX/EdoMex", value=False)
+        # Controles del Heatmap
+        col_h1, col_h2 = st.columns(2)
+        with col_h1:
+            exclude_cdmx_heat = st.checkbox("Ocultar CDMX/EdoMex", value=False, key="heat_exclude")
+        with col_h2:
+            # Opción para normalizar o no
+            modo_heatmap = st.radio("Métrica", ["Conteo Total", "Tasa x 100k"], horizontal=True)
         
+        # Filtro de datos
         df_heat_s = df_filtered.copy()
-        if exclude_cdmx:
-            # Filtro simple por texto
-            df_heat_s = df_heat_s[~df_heat_s["estado"].astype(str).str.contains("Ciudad|MExico|Distrito", case=False, regex=True)]
+        if exclude_cdmx_heat:
+            df_heat_s = df_heat_s[~df_heat_s["_key_estado"].str.contains("CIUDAD|MEXICO|DISTRITO", regex=True)]
             
         top_p = df_heat_s["nombre_comercial"].value_counts().head(10).index
         top_e = df_heat_s["estado"].value_counts().head(10).index
@@ -277,29 +297,30 @@ with tab1:
         if not df_heat.empty:
             matriz = pd.crosstab(df_heat["nombre_comercial"], df_heat["estado"])
             
-            # Normalización rápida por población del estado
-            # Necesitamos la población alineada con las columnas de la matriz
-            # Hacemos un lookup rápido
-            pob_lookup = df_pob.set_index("_key_estado")["_pob_uso"]
-            
-            # Creamos una fila de población que coincida con las columnas (estados) de la matriz
-            # Primero convertimos los nombres de las columnas a su clave limpia
-            cols_clean = [limpiar_clave(pd.Series([x]))[0] for x in matriz.columns]
-            vals_pob = pob_lookup.reindex(cols_clean).fillna(1).values
-            
-            # Dividimos
-            matriz_norm = matriz.div(vals_pob, axis=1) * 100000
+            if modo_heatmap == "Tasa x 100k":
+                # Lógica de Normalización
+                pob_lookup = df_pob.set_index("_key_estado")["_pob_uso"]
+                cols_clean = [limpiar_clave(pd.Series([x]))[0] for x in matriz.columns]
+                vals_pob = pob_lookup.reindex(cols_clean).fillna(1).values
+                matriz_final = matriz.div(vals_pob, axis=1) * 100000
+                fmt = ".1f"
+                titulo_leg = "Tasa"
+            else:
+                # Lógica de Conteo Puro
+                matriz_final = matriz
+                fmt = "d"
+                titulo_leg = "Quejas"
             
             fig_heat = px.imshow(
-                matriz_norm,
-                text_auto=".1f",
+                matriz_final,
+                text_auto=fmt,
                 aspect="auto",
-                color_continuous_scale="Viridis",
-                labels=dict(x="Estado", y="Proveedor", color="Tasa"),
+                color_continuous_scale="Viridis" if modo_heatmap == "Conteo Total" else "Magma",
+                labels=dict(x="Estado", y="Proveedor", color=titulo_leg),
             )
             st.plotly_chart(fig_heat, use_container_width=True)
         else:
-            st.info("Datos insuficientes.")
+            st.info("Datos insuficientes para la selección actual.")
 
 # TAB 2 — BLOQUE 4: ANÁLISIS ECONÓMICO E INFERENCIAL
 
@@ -473,3 +494,4 @@ with tab3:
         ),
         use_container_width=True
     )
+
