@@ -79,6 +79,41 @@ if "proveedor_top" not in perfil_df.columns:
 
 perfil_df["_key_prov"] = limpiar_clave(perfil_df["proveedor_top"])
 
+ISO_MX = {
+    "AGUASCALIENTES": "MX-AGU",
+    "BAJA CALIFORNIA": "MX-BCN",
+    "BAJA CALIFORNIA SUR": "MX-BCS",
+    "CAMPECHE": "MX-CAM",
+    "CHIAPAS": "MX-CHP",
+    "CHIHUAHUA": "MX-CHH",
+    "CIUDAD DE MEXICO": "MX-CMX",
+    "COAHUILA": "MX-COA",
+    "COLIMA": "MX-COL",
+    "DURANGO": "MX-DUR",
+    "ESTADO DE MEXICO": "MX-MEX",
+    "GUANAJUATO": "MX-GUA",
+    "GUERRERO": "MX-GRO",
+    "HIDALGO": "MX-HID",
+    "JALISCO": "MX-JAL",
+    "MICHOACAN": "MX-MIC",
+    "MORELOS": "MX-MOR",
+    "NAYARIT": "MX-NAY",
+    "NUEVO LEON": "MX-NLE",
+    "OAXACA": "MX-OAX",
+    "PUEBLA": "MX-PUE",
+    "QUERETARO": "MX-QUE",
+    "QUINTANA ROO": "MX-ROO",
+    "SAN LUIS POTOSI": "MX-SLP",
+    "SINALOA": "MX-SIN",
+    "SONORA": "MX-SON",
+    "TABASCO": "MX-TAB",
+    "TAMAULIPAS": "MX-TAM",
+    "TLAXCALA": "MX-TLA",
+    "VERACRUZ": "MX-VER",
+    "YUCATAN": "MX-YUC",
+    "ZACATECAS": "MX-ZAC"
+}
+
 # PESTAÑAS
 
 
@@ -189,107 +224,71 @@ with tab1:
         else:
             st.info("Falta información de usuarios para calcular la tasa.")
 
-        # =========================================================================
-    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (CHOROPLETH) — ULTRA ROBUSTA
+    # =========================================================================
+    # SECCIÓN 2: MAPA DE CALOR GEOGRÁFICO (ISO — SIN GEOJSON)
     # =========================================================================
     st.subheader("📍 Intensidad de Quejas por Estado")
     st.markdown("Mapa de calor normalizado: Quejas por cada 100,000 habitantes.")
 
-    try:
-        import json
-        import requests
-        import re
+    # ---------------------------------------------------------
+    # 1. Conteo de quejas por estado
+    # ---------------------------------------------------------
+    quejas_edo = (
+        df_filtered["_key_estado"]
+        .value_counts()
+        .reset_index()
+    )
+    quejas_edo.columns = ["_key_estado", "quejas"]
 
-        # ---------------------------------------------------------
-        # 1. Conteo de quejas por estado
-        # ---------------------------------------------------------
-        quejas_edo = (
-            df_filtered["_key_estado"]
-            .value_counts()
-            .reset_index()
-        )
-        quejas_edo.columns = ["_key_estado", "quejas"]
+    # ---------------------------------------------------------
+    # 2. Merge con población
+    # ---------------------------------------------------------
+    df_ranking = pd.merge(
+        quejas_edo,
+        df_pob,
+        on="_key_estado",
+        how="left"
+    )
 
-        # ---------------------------------------------------------
-        # 2. Merge con población
-        # ---------------------------------------------------------
-        df_ranking = pd.merge(
-            quejas_edo,
-            df_pob,
-            on="_key_estado",
-            how="left"
-        )
+    # ---------------------------------------------------------
+    # 3. Población y tasa
+    # ---------------------------------------------------------
+    col_pob_num = df_pob.select_dtypes(include=[np.number]).columns[-1]
+    df_ranking["poblacion_total"] = df_ranking[col_pob_num].fillna(1)
+    df_ranking["tasa_100k"] = (
+        df_ranking["quejas"] / df_ranking["poblacion_total"]
+    ) * 100000
 
-        # ---------------------------------------------------------
-        # 3. Población
-        # ---------------------------------------------------------
-        col_pob_num = df_pob.select_dtypes(include=[np.number]).columns[-1]
-        df_ranking["poblacion_total"] = df_ranking[col_pob_num].fillna(1)
+    # ---------------------------------------------------------
+    # 4. ISO codes
+    # ---------------------------------------------------------
+    df_ranking["iso"] = df_ranking["_key_estado"].map(ISO_MX)
+    df_map = df_ranking.dropna(subset=["iso"])
 
-        # ---------------------------------------------------------
-        # 4. Tasa por 100k
-        # ---------------------------------------------------------
-        df_ranking["tasa_100k"] = (
-            df_ranking["quejas"] / df_ranking["poblacion_total"]
-        ) * 100000
+    # ---------------------------------------------------------
+    # 5. Choropleth SIN geojson
+    # ---------------------------------------------------------
+    fig_map = px.choropleth(
+        df_map,
+        locations="iso",
+        color="tasa_100k",
+        scope="north america",
+        color_continuous_scale="Reds",
+        range_color=(0, df_map["tasa_100k"].quantile(0.95)),
+        labels={"tasa_100k": "Tasa x 100k"},
+        title="Tasa de Quejas por Estado (x 100k hab)"
+    )
 
-        # ---------------------------------------------------------
-        # 5. Nombre bonito (solo hover)
-        # ---------------------------------------------------------
-        col_nombre_mapa = df_pob.columns[0]
-        nombre_lookup = dict(zip(df_pob["_key_estado"], df_pob[col_nombre_mapa]))
-        df_ranking["nombre_mapa"] = df_ranking["_key_estado"].map(nombre_lookup)
+    fig_map.update_geos(
+        fitbounds="locations",
+        visible=False
+    )
 
-        # ---------------------------------------------------------
-        # 6. DESCARGA Y LIMPIEZA FORZADA DEL GEOJSON
-        # ---------------------------------------------------------
-        geojson_url = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexico_high.json"
-        raw_text = requests.get(geojson_url).text
+    fig_map.update_layout(
+        margin={"r": 0, "t": 40, "l": 0, "b": 0}
+    )
 
-        # 🔑 EXTRAER SOLO EL BLOQUE JSON { ... }
-        match = re.search(r"\{.*\}", raw_text, re.DOTALL)
-        if not match:
-            raise ValueError("No se encontró un objeto JSON válido en el GeoJSON")
-
-        geojson = json.loads(match.group())
-
-        # Normalizar claves del GeoJSON
-        for f in geojson["features"]:
-            f["properties"]["key_estado"] = limpiar_clave(
-                pd.Series([f["properties"]["name"]])
-            )[0]
-
-        # ---------------------------------------------------------
-        # 7. Choropleth
-        # ---------------------------------------------------------
-        fig_map = px.choropleth(
-            df_ranking,
-            geojson=geojson,
-            locations="_key_estado",
-            featureidkey="properties.key_estado",
-            color="tasa_100k",
-            color_continuous_scale="Reds",
-            range_color=(0, df_ranking["tasa_100k"].quantile(0.95)),
-            hover_name="nombre_mapa",
-            hover_data={
-                "quejas": True,
-                "poblacion_total": True,
-                "_key_estado": False,
-                "tasa_100k": ":.1f"
-            },
-            title="Tasa de Quejas (x 100k hab)"
-        )
-
-        fig_map.update_geos(fitbounds="locations", visible=False)
-        fig_map.update_layout(
-            margin={"r": 0, "t": 40, "l": 0, "b": 0},
-            coloraxis_colorbar_title="Tasa"
-        )
-
-        st.plotly_chart(fig_map, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"No se pudo generar el mapa: {e}")
+    st.plotly_chart(fig_map, use_container_width=True)
         
     # =========================================================================
     # SECCIÓN 3: RESOLUCIÓN Y FOCOS ROJOS
@@ -530,6 +529,7 @@ with tab3:
         ),
         use_container_width=True
     )
+
 
 
 
